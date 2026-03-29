@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import asyncio
 import xml.etree.ElementTree as ET
 
-TOKEN = 
+TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.Gl_z-K.1A-nyVWIj8KcgulcerQvdtwpAxNKzRFIdFjTz4"
 CHANNEL_ID = 1475125646064619541
 API_KEY = "BgE7sSb84zMWBqszNeXRMedheQZsM431"
 
