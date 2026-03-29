@@ -3,8 +3,9 @@ import requests
 from datetime import datetime, timedelta
 import asyncio
 import xml.etree.ElementTree as ET
+import os
 
-TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GpHdWb.sFgP8v-rJd7AxYsQwAVwZtcE4NaU7tx8arbd64"
+TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GpHdWb.sFgP8v-rJd7AxYsQwAVwZtcE4NaU7tx8arbd64")
 CHANNEL_ID = 1475125646064619541
 API_KEY = "BgE7sSb84zMWBqszNeXRMedheQZsM431"
 
