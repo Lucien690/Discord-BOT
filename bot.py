@@ -5,14 +5,16 @@ import asyncio
 import xml.etree.ElementTree as ET
 import os
 
-TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GM2A67.j1ULx5firJD070eYYACnsHsIorp3-G1Q-5N9Pw")
+TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.G3dxo3.ZT5p9_Sigi2n51fFP4lt1C0H4i325-y6r166VM")
+
+if TOKEN is None:
+    TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.G3dxo3.ZT5p9_Sigi2n51fFP4lt1C0H4i325-y6r166VM"
+
 CHANNEL_ID = 1475125646064619541
-API_KEY = "BgE7sSb84zMWBqszNeXRMedheQZsM431"
 
 client = discord.Client(intents=discord.Intents.default())
 sent_events = set()
 
-# 🔧 NEWS LADEN (STABIL)
 def get_news():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
@@ -20,13 +22,11 @@ def get_news():
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
-            print("Fehler beim Laden der Daten")
             return []
 
         root = ET.fromstring(response.content)
 
-    except Exception as e:
-        print("XML Fehler:", e)
+    except:
         return []
 
     events = []
@@ -53,7 +53,6 @@ def get_news():
 
     return events
 
-# 📊 ANALYSE
 def analyze_event(event_name, currency):
     name = event_name.lower()
 
@@ -76,7 +75,6 @@ def analyze_event(event_name, currency):
 
     return volatility, pairs, bias
 
-# 🔁 LOOP
 async def check_news():
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
@@ -121,7 +119,6 @@ async def check_news():
 
         await asyncio.sleep(300)
 
-# ▶️ START
 @client.event
 async def on_ready():
     print(f"Bot online: {client.user}")
