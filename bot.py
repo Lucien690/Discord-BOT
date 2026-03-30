@@ -5,10 +5,10 @@ import asyncio
 import xml.etree.ElementTree as ET
 import os
 
-TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.G3dxo3.ZT5p9_Sigi2n51fFP4lt1C0H4i325-y6r166VM")
+TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GdW_iT.Q5ZnVCuMby2VpEbpd9q0CGrsoax1i_RUAEkFrY")
 
 if TOKEN is None:
-    TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.G3dxo3.ZT5p9_Sigi2n51fFP4lt1C0H4i325-y6r166VM"
+    TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GdW_iT.Q5ZnVCuMby2VpEbpd9q0CGrsoax1i_RUAEkFrY"
 
 CHANNEL_ID = 1475125646064619541
 
