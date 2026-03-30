@@ -7,8 +7,6 @@ import os
 
 TOKEN = os.getenv("TOKEN")
 
-print("TOKEN TEST:", TOKEN)
-
 CHANNEL_ID = 1475125646064619541
 
 client = discord.Client(intents=discord.Intents.default())
