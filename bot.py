@@ -5,7 +5,7 @@ import asyncio
 import xml.etree.ElementTree as ET
 import os
 
-TOKEN = os.getenv("MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GdW_iT.Q5ZnVCuMby2VpEbpd9q0CGrsoax1i_RUAEkFrY")
+TOKEN = os.getenv("TOKEN")
 
 if TOKEN is None:
     TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GdW_iT.Q5ZnVCuMby2VpEbpd9q0CGrsoax1i_RUAEkFrY"
