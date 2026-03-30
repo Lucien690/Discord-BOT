@@ -7,9 +7,6 @@ import os
 
 TOKEN = os.getenv("TOKEN")
 
-if TOKEN is None:
-    TOKEN = "MTQ4NzYzNDcyNTA1MjA4ODM1MQ.GdW_iT.Q5ZnVCuMby2VpEbpd9q0CGrsoax1i_RUAEkFrY"
-
 CHANNEL_ID = 1475125646064619541
 
 client = discord.Client(intents=discord.Intents.default())
