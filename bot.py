@@ -12,7 +12,7 @@ API_KEY = "BgE7sSb84zMWBqszNeXRMedheQZsM431"
 client = discord.Client(intents=discord.Intents.default())
 sent_events = set()
 
-# 🔧 STABILE NEWS FUNKTION
+# 🔧 NEWS LADEN (STABIL)
 def get_news():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
@@ -53,21 +53,18 @@ def get_news():
 
     return events
 
-# 📊 ANALYSE (VOLATILITÄT + BIAS)
+# 📊 ANALYSE
 def analyze_event(event_name, currency):
     name = event_name.lower()
 
     volatility = "⚠️ Normale Volatilität"
     bias = "Unklar"
 
-    # 🔥 High Volatility
     if any(x in name for x in ["cpi", "inflation", "interest rate", "fomc", "nfp"]):
         volatility = "🔥 Hohe Volatilität erwartet!"
 
-    # 💱 Paare
     pairs = f"{currency}/USD, {currency}/JPY, {currency}/EUR"
 
-    # 📈 Bias
     if "rate hike" in name or "interest rate" in name:
         bias = f"{currency} wahrscheinlich STARK 📈"
     elif "rate cut" in name:
@@ -79,7 +76,7 @@ def analyze_event(event_name, currency):
 
     return volatility, pairs, bias
 
-# 🔁 HAUPTLOOP
+# 🔁 LOOP
 async def check_news():
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
@@ -101,11 +98,9 @@ async def check_news():
 
                 volatility, pairs, bias = analyze_event(event["event"], event["country"])
 
-                # 🔔 Rolle
                 role = discord.utils.get(channel.guild.roles, name="HIGH IMPACT!")
                 role_mention = role.mention if role else "@HIGH IMPACT!"
 
-                # 🎨 Embed
                 embed = discord.Embed(
                     title="🚨 High Impact News in 1h",
                     description=f"**{event['event']}**",
