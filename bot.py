@@ -8,7 +8,11 @@ import os
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1475125646064619541
 
-client = discord.Client(intents=discord.Intents.default())
+# ✅ INTENTS
+intents = discord.Intents.default()
+intents.message_content = True
+
+client = discord.Client(intents=intents)
 
 sent_reminders = set()
 sent_releases = set()
@@ -81,7 +85,6 @@ async def news_loop():
 
         for event in events:
             key = event["title"] + str(event["time"])
-
             time_diff = (event["time"] - now).total_seconds()
 
             # ⏰ Reminder
@@ -115,7 +118,6 @@ async def news_loop():
                 embed.add_field(name="📊 Actual", value=actual, inline=True)
                 embed.add_field(name="📉 Forecast", value=forecast, inline=True)
                 embed.add_field(name="📈 Previous", value=previous, inline=True)
-
                 embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
 
                 await channel.send(content="@everyone 🚨", embed=embed)
@@ -130,14 +132,15 @@ async def on_ready():
     client.loop.create_task(news_loop())
 
 
-# ✅ TEST FUNKTION
+# ✅ MENTION TEST
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.lower() == "test":
-        await message.channel.send("Bot funktioniert ✅")
+    if client.user in message.mentions:
+        if "test" in message.content.lower():
+            await message.channel.send("Bot funktioniert ✅")
 
 
 client.run(TOKEN)
