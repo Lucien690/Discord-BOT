@@ -5,9 +5,15 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
 
-# 🔐 ENV VARS (SICHER)
+# 🔐 ENV VARS
 TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+
+channel_id_env = os.getenv("CHANNEL_ID")
+if channel_id_env is None:
+    print("❌ CHANNEL_ID fehlt!")
+    CHANNEL_ID = None
+else:
+    CHANNEL_ID = int(channel_id_env)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,17 +35,17 @@ def get_events():
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
-            print("ERROR: API nicht erreichbar")
+            print("❌ API nicht erreichbar")
             return []
 
         try:
             root = ET.fromstring(response.content)
         except Exception as e:
-            print(f"XML ERROR: {e}")
+            print(f"❌ XML ERROR: {e}")
             return []
 
     except Exception as e:
-        print(f"REQUEST ERROR: {e}")
+        print(f"❌ REQUEST ERROR: {e}")
         return []
 
     events_list = []
@@ -67,9 +73,18 @@ def get_events():
 # MAIN LOOP
 async def news_loop():
     await client.wait_until_ready()
+
+    if CHANNEL_ID is None:
+        print("❌ Kein Channel gesetzt → Bot stoppt")
+        return
+
     channel = client.get_channel(CHANNEL_ID)
 
-    print("NEWS LOOP STARTED")
+    if channel is None:
+        print("❌ Channel nicht gefunden!")
+        return
+
+    print("🚀 NEWS LOOP STARTED")
 
     while True:
         try:
@@ -78,7 +93,7 @@ async def news_loop():
             events = get_events()
 
             for event in events:
-                print(f"EVENT: {event['title']} | ACTUAL: {event['actual']}")
+                print(f"📊 EVENT: {event['title']} | ACTUAL: {event['actual']}")
 
                 if event["actual"] and event["title"] not in posted_events:
 
@@ -103,21 +118,23 @@ async def news_loop():
                         f"➡️ Impact: {direction}"
                     )
 
-                    print(f"SENDING: {event['title']}")
+                    print(f"📤 SENDING: {event['title']}")
 
                     await channel.send(message)
 
                     posted_events.add(event["title"])
 
         except Exception as e:
-            print(f"LOOP ERROR: {e}")
+            print(f"❌ LOOP ERROR: {e}")
 
         await asyncio.sleep(60)
 
 # BOT START
 @client.event
 async def on_ready():
-    print(f"FOREX BOT ONLINE als {client.user}")
+    print(f"✅ FOREX BOT ONLINE als {client.user}")
+    print(f"🔎 CHANNEL_ID: {CHANNEL_ID}")
+
     client.loop.create_task(news_loop())
 
 # TEST MIT @BOT
