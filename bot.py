@@ -8,7 +8,6 @@ import os
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1475125646064619541
 
-# ✅ INTENTS
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -16,6 +15,12 @@ client = discord.Client(intents=intents)
 
 sent_reminders = set()
 sent_releases = set()
+
+
+# 🔥 SAFE XML READER (FIX)
+def safe_find(event, tag):
+    found = event.find(tag)
+    return found.text if found is not None else ""
 
 
 def get_events():
@@ -26,19 +31,19 @@ def get_events():
     events = []
 
     for event in root.findall("event"):
-        title = event.find("title").text
-        country = event.find("country").text
-        impact = event.find("impact").text
-        date = event.find("date").text
-        time = event.find("time").text
-        forecast = event.find("forecast").text
-        previous = event.find("previous").text
-        actual = event.find("actual").text
+        title = safe_find(event, "title")
+        country = safe_find(event, "country")
+        impact = safe_find(event, "impact")
+        date = safe_find(event, "date")
+        time = safe_find(event, "time")
+        forecast = safe_find(event, "forecast")
+        previous = safe_find(event, "previous")
+        actual = safe_find(event, "actual")
 
         if impact not in ["High", "Medium"]:
             continue
 
-        if time == "All Day" or time == "Tentative":
+        if time in ["All Day", "Tentative"]:
             continue
 
         try:
@@ -87,14 +92,15 @@ async def news_loop():
             key = event["title"] + str(event["time"])
             time_diff = (event["time"] - now).total_seconds()
 
-            # ⏰ Reminder
+            print("EVENT:", event["title"], "| ACTUAL:", event["actual"])
+
+            # ⏰ Reminder 1h vorher
             if 3500 < time_diff < 3700 and key not in sent_reminders:
                 embed = discord.Embed(
                     title="⏰ UPCOMING EVENT",
                     description=f"{event['country']} - {event['title']}",
                     color=discord.Color.orange()
                 )
-
                 embed.add_field(name="📊 Impact", value=event["impact"])
                 embed.add_field(name="🕐 Zeit", value=str(event["time"]))
 
@@ -102,12 +108,10 @@ async def news_loop():
                 sent_reminders.add(key)
 
             # 🚨 Release
-            if event["actual"] and event["actual"].strip() != "" and key not in sent_releases:
-                actual = event["actual"]
-                forecast = event["forecast"]
-                previous = event["previous"]
+            if event["actual"] != "" and key not in sent_releases:
+                print("SENDING:", event["title"])
 
-                result = analyze(actual, forecast)
+                result = analyze(event["actual"], event["forecast"])
 
                 embed = discord.Embed(
                     title="🚨 ECONOMIC RELEASE",
@@ -115,9 +119,9 @@ async def news_loop():
                     color=discord.Color.red()
                 )
 
-                embed.add_field(name="📊 Actual", value=actual, inline=True)
-                embed.add_field(name="📉 Forecast", value=forecast, inline=True)
-                embed.add_field(name="📈 Previous", value=previous, inline=True)
+                embed.add_field(name="📊 Actual", value=event["actual"], inline=True)
+                embed.add_field(name="📉 Forecast", value=event["forecast"], inline=True)
+                embed.add_field(name="📈 Previous", value=event["previous"], inline=True)
                 embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
 
                 await channel.send(content="@everyone 🚨", embed=embed)
@@ -132,7 +136,7 @@ async def on_ready():
     client.loop.create_task(news_loop())
 
 
-# ✅ MENTION TEST
+# ✅ TEST MIT @BOT
 @client.event
 async def on_message(message):
     if message.author == client.user:
