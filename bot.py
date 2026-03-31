@@ -55,7 +55,7 @@ def get_events():
     return events
 
 
-def analyze(actual, forecast, title):
+def analyze(actual, forecast):
     try:
         actual_val = float(actual.replace("%", "").replace("M", ""))
         forecast_val = float(forecast.replace("%", "").replace("M", ""))
@@ -84,6 +84,7 @@ async def news_loop():
 
             time_diff = (event["time"] - now).total_seconds()
 
+            # ⏰ Reminder
             if 3500 < time_diff < 3700 and key not in sent_reminders:
                 embed = discord.Embed(
                     title="⏰ UPCOMING EVENT",
@@ -97,28 +98,28 @@ async def news_loop():
                 await channel.send(embed=embed)
                 sent_reminders.add(key)
 
-            if time_diff < 0 and key not in sent_releases:
+            # 🚨 Release
+            if event["actual"] and event["actual"].strip() != "" and key not in sent_releases:
                 actual = event["actual"]
                 forecast = event["forecast"]
                 previous = event["previous"]
 
-                if actual:
-                    result = analyze(actual, forecast, event["title"])
+                result = analyze(actual, forecast)
 
-                    embed = discord.Embed(
-                        title="🚨 ECONOMIC RELEASE",
-                        description=f"{event['country']} - {event['title']}",
-                        color=discord.Color.red()
-                    )
+                embed = discord.Embed(
+                    title="🚨 ECONOMIC RELEASE",
+                    description=f"{event['country']} - {event['title']}",
+                    color=discord.Color.red()
+                )
 
-                    embed.add_field(name="📊 Actual", value=actual, inline=True)
-                    embed.add_field(name="📉 Forecast", value=forecast, inline=True)
-                    embed.add_field(name="📈 Previous", value=previous, inline=True)
+                embed.add_field(name="📊 Actual", value=actual, inline=True)
+                embed.add_field(name="📉 Forecast", value=forecast, inline=True)
+                embed.add_field(name="📈 Previous", value=previous, inline=True)
 
-                    embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
+                embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
 
-                    await channel.send(content="@everyone 🚨", embed=embed)
-                    sent_releases.add(key)
+                await channel.send(content="@everyone 🚨", embed=embed)
+                sent_releases.add(key)
 
         await asyncio.sleep(60)
 
@@ -127,6 +128,16 @@ async def news_loop():
 async def on_ready():
     print("FOREX BOT ONLINE")
     client.loop.create_task(news_loop())
+
+
+# ✅ TEST FUNKTION
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if message.content.lower() == "test":
+        await message.channel.send("Bot funktioniert ✅")
 
 
 client.run(TOKEN)
