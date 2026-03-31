@@ -4,8 +4,12 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
+import sys
 
-print("🚀 SCRIPT STARTET")
+# 🔥 sorgt dafür dass Logs sofort erscheinen
+sys.stdout.reconfigure(line_buffering=True)
+
+print("🚀 SCRIPT STARTET", flush=True)
 
 # 🔐 ENV
 TOKEN = os.getenv("TOKEN")
@@ -28,7 +32,7 @@ def get_events():
         response = requests.get(url)
         root = ET.fromstring(response.content)
     except Exception as e:
-        print(f"❌ XML Fehler: {e}")
+        print(f"❌ XML Fehler: {e}", flush=True)
         return []
 
     events = []
@@ -50,21 +54,21 @@ def get_events():
             })
 
         except Exception as e:
-            print(f"❌ Event Fehler: {e}")
+            print(f"❌ Event Fehler: {e}", flush=True)
             continue
 
-    print(f"✅ {len(events)} Events geladen")
+    print(f"✅ {len(events)} Events geladen", flush=True)
     return events
 
 
 async def news_loop():
     await client.wait_until_ready()
-    print("🟢 Bot ist ready → starte Loop")
+    print("🟢 Bot ist ready → starte Loop", flush=True)
 
     while not client.is_closed():
         try:
             now = datetime.utcnow() + timedelta(hours=2)
-            print(f"⏰ Check um {now}")
+            print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
 
@@ -97,7 +101,7 @@ async def news_loop():
                             await channel.send(
                                 f"⚠️ Upcoming News:\n📊 {title}\n⏰ in weniger als 1 Stunde"
                             )
-                            print(f"🔔 Pre-Alert: {title}")
+                            print(f"🔔 Pre-Alert: {title}", flush=True)
                             pre_alerted_events.add(title)
 
                     # 📊 EVENT RELEASE
@@ -106,21 +110,21 @@ async def news_loop():
                         if channel:
                             msg = f"📊 {title}\nActual: {actual}"
                             await channel.send(msg)
-                            print(f"📤 Gesendet: {title}")
+                            print(f"📤 Gesendet: {title}", flush=True)
                             posted_events.add(title)
 
                 except Exception as e:
-                    print(f"❌ Fehler im Event Loop: {e}")
+                    print(f"❌ Fehler im Event Loop: {e}", flush=True)
 
         except Exception as e:
-            print(f"❌ Loop Fehler: {e}")
+            print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
 
 
 @client.event
 async def on_ready():
-    print(f"🤖 Eingeloggt als {client.user}")
+    print(f"🤖 Eingeloggt als {client.user}", flush=True)
     client.loop.create_task(news_loop())
 
 
