@@ -75,7 +75,7 @@ async def news_loop():
     channel = await client.fetch_channel(CHANNEL_ID)
 
     while not client.is_closed():
-        now = datetime.utcnow()
+        now = datetime.utcnow() + timedelta(hours=2)
 
         events = get_events()
 
@@ -84,7 +84,6 @@ async def news_loop():
 
             time_diff = (event["time"] - now).total_seconds()
 
-            # ⏰ 1h vorher
             if 3500 < time_diff < 3700 and key not in sent_reminders:
                 embed = discord.Embed(
                     title="⏰ UPCOMING EVENT",
@@ -98,7 +97,6 @@ async def news_loop():
                 await channel.send(embed=embed)
                 sent_reminders.add(key)
 
-            # 🚨 Release
             if time_diff < 0 and key not in sent_releases:
                 actual = event["actual"]
                 forecast = event["forecast"]
