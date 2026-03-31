@@ -1,150 +1,132 @@
 import discord
-import requests
 import asyncio
+import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
 
+# 🔐 ENV VARS (SICHER)
 TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = 1475125646064619541
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-sent_reminders = set()
-sent_releases = set()
+posted_events = set()
 
-
-# 🔥 SAFE XML READER (FIX)
+# Sicheres XML Lesen
 def safe_find(event, tag):
     found = event.find(tag)
-    return found.text if found is not None else ""
+    return found.text.strip() if found is not None and found.text else ""
 
-
+# Events holen (mit Fehler-Schutz)
 def get_events():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-    response = requests.get(url)
 
-    root = ET.fromstring(response.content)
-    events = []
+    try:
+        response = requests.get(url, timeout=10)
 
-    for event in root.findall("event"):
-        title = safe_find(event, "title")
-        country = safe_find(event, "country")
-        impact = safe_find(event, "impact")
-        date = safe_find(event, "date")
-        time = safe_find(event, "time")
-        forecast = safe_find(event, "forecast")
-        previous = safe_find(event, "previous")
-        actual = safe_find(event, "actual")
-
-        if impact not in ["High", "Medium"]:
-            continue
-
-        if time in ["All Day", "Tentative"]:
-            continue
+        if response.status_code != 200:
+            print("ERROR: API nicht erreichbar")
+            return []
 
         try:
-            event_time = datetime.strptime(f"{date} {time}", "%Y.%m.%d %H:%M")
-        except:
+            root = ET.fromstring(response.content)
+        except Exception as e:
+            print(f"XML ERROR: {e}")
+            return []
+
+    except Exception as e:
+        print(f"REQUEST ERROR: {e}")
+        return []
+
+    events_list = []
+
+    for event in root.findall("event"):
+        impact = safe_find(event, "impact")
+
+        if impact not in ["Medium", "High"]:
             continue
 
-        events.append({
+        title = safe_find(event, "title")
+        currency = safe_find(event, "currency")
+        actual = safe_find(event, "actual")
+        forecast = safe_find(event, "forecast")
+
+        events_list.append({
             "title": title,
-            "country": country,
-            "impact": impact,
-            "time": event_time,
-            "forecast": forecast,
-            "previous": previous,
-            "actual": actual
+            "currency": currency,
+            "actual": actual,
+            "forecast": forecast
         })
 
-    return events
+    return events_list
 
-
-def analyze(actual, forecast):
-    try:
-        actual_val = float(actual.replace("%", "").replace("M", ""))
-        forecast_val = float(forecast.replace("%", "").replace("M", ""))
-    except:
-        return "⚠️ Keine klare Analyse möglich"
-
-    if actual_val > forecast_val:
-        return "📈 BULLISH"
-    elif actual_val < forecast_val:
-        return "📉 BEARISH"
-    else:
-        return "⚖️ NEUTRAL"
-
-
+# MAIN LOOP
 async def news_loop():
     await client.wait_until_ready()
-    channel = await client.fetch_channel(CHANNEL_ID)
+    channel = client.get_channel(CHANNEL_ID)
 
-    while not client.is_closed():
-        now = datetime.utcnow() + timedelta(hours=2)
+    print("NEWS LOOP STARTED")
 
-        events = get_events()
+    while True:
+        try:
+            now = datetime.utcnow() + timedelta(hours=2)
 
-        for event in events:
-            key = event["title"] + str(event["time"])
-            time_diff = (event["time"] - now).total_seconds()
+            events = get_events()
 
-            print("EVENT:", event["title"], "| ACTUAL:", event["actual"])
+            for event in events:
+                print(f"EVENT: {event['title']} | ACTUAL: {event['actual']}")
 
-            # ⏰ Reminder 1h vorher
-            if 3500 < time_diff < 3700 and key not in sent_reminders:
-                embed = discord.Embed(
-                    title="⏰ UPCOMING EVENT",
-                    description=f"{event['country']} - {event['title']}",
-                    color=discord.Color.orange()
-                )
-                embed.add_field(name="📊 Impact", value=event["impact"])
-                embed.add_field(name="🕐 Zeit", value=str(event["time"]))
+                if event["actual"] and event["title"] not in posted_events:
 
-                await channel.send(embed=embed)
-                sent_reminders.add(key)
+                    direction = "Neutral"
 
-            # 🚨 Release
-            if event["actual"] != "" and key not in sent_releases:
-                print("SENDING:", event["title"])
+                    try:
+                        actual_val = float(event["actual"].replace("%", "").replace(",", "."))
+                        forecast_val = float(event["forecast"].replace("%", "").replace(",", "."))
 
-                result = analyze(event["actual"], event["forecast"])
+                        if actual_val > forecast_val:
+                            direction = "Bullish 📈"
+                        elif actual_val < forecast_val:
+                            direction = "Bearish 📉"
+                    except:
+                        pass
 
-                embed = discord.Embed(
-                    title="🚨 ECONOMIC RELEASE",
-                    description=f"{event['country']} - {event['title']}",
-                    color=discord.Color.red()
-                )
+                    message = (
+                        f"🚨 **{event['currency']} News**\n"
+                        f"📊 {event['title']}\n\n"
+                        f"Actual: {event['actual']}\n"
+                        f"Forecast: {event['forecast']}\n\n"
+                        f"➡️ Impact: {direction}"
+                    )
 
-                embed.add_field(name="📊 Actual", value=event["actual"], inline=True)
-                embed.add_field(name="📉 Forecast", value=event["forecast"], inline=True)
-                embed.add_field(name="📈 Previous", value=event["previous"], inline=True)
-                embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
+                    print(f"SENDING: {event['title']}")
 
-                await channel.send(content="@everyone 🚨", embed=embed)
-                sent_releases.add(key)
+                    await channel.send(message)
+
+                    posted_events.add(event["title"])
+
+        except Exception as e:
+            print(f"LOOP ERROR: {e}")
 
         await asyncio.sleep(60)
 
-
+# BOT START
 @client.event
 async def on_ready():
-    print("FOREX BOT ONLINE")
+    print(f"FOREX BOT ONLINE als {client.user}")
     client.loop.create_task(news_loop())
 
-
-# ✅ TEST MIT @BOT
+# TEST MIT @BOT
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
     if client.user in message.mentions:
-        if "test" in message.content.lower():
-            await message.channel.send("Bot funktioniert ✅")
-
+        await message.channel.send("Bot funktioniert ✅")
 
 client.run(TOKEN)
