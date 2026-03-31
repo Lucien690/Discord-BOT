@@ -5,15 +5,19 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
 
-# 🔐 ENV VARS
+print("🚀 SCRIPT STARTET")
+
+# 🔐 ENV
 TOKEN = os.getenv("TOKEN")
 
 channel_id_env = os.getenv("CHANNEL_ID")
+
 if channel_id_env is None:
     print("❌ CHANNEL_ID fehlt!")
     CHANNEL_ID = None
 else:
     CHANNEL_ID = int(channel_id_env)
+    print(f"✅ CHANNEL_ID geladen: {CHANNEL_ID}")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -22,20 +26,22 @@ client = discord.Client(intents=intents)
 
 posted_events = set()
 
-# Sicheres XML Lesen
+# Safe XML
 def safe_find(event, tag):
     found = event.find(tag)
     return found.text.strip() if found is not None and found.text else ""
 
-# Events holen (mit Fehler-Schutz)
+# Events holen
 def get_events():
+    print("🔄 Lade Events...")
+
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
         response = requests.get(url, timeout=10)
 
         if response.status_code != 200:
-            print("❌ API nicht erreichbar")
+            print("❌ API Fehler")
             return []
 
         try:
@@ -68,14 +74,20 @@ def get_events():
             "forecast": forecast
         })
 
+    print(f"✅ {len(events_list)} Events gefunden")
+
     return events_list
 
-# MAIN LOOP
+# LOOP
 async def news_loop():
+    print("🟡 news_loop gestartet (warte auf ready)")
+
     await client.wait_until_ready()
 
+    print("🟢 Bot ist ready → starte Loop")
+
     if CHANNEL_ID is None:
-        print("❌ Kein Channel gesetzt → Bot stoppt")
+        print("❌ Kein Channel → STOP")
         return
 
     channel = client.get_channel(CHANNEL_ID)
@@ -89,11 +101,12 @@ async def news_loop():
     while True:
         try:
             now = datetime.utcnow() + timedelta(hours=2)
+            print(f"⏰ Check um {now}")
 
             events = get_events()
 
             for event in events:
-                print(f"📊 EVENT: {event['title']} | ACTUAL: {event['actual']}")
+                print(f"📊 EVENT: {event['title']} | {event['actual']}")
 
                 if event["actual"] and event["title"] not in posted_events:
 
@@ -118,7 +131,7 @@ async def news_loop():
                         f"➡️ Impact: {direction}"
                     )
 
-                    print(f"📤 SENDING: {event['title']}")
+                    print(f"📤 Sende Nachricht: {event['title']}")
 
                     await channel.send(message)
 
@@ -129,21 +142,24 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# BOT START
+# READY EVENT
 @client.event
 async def on_ready():
-    print(f"✅ FOREX BOT ONLINE als {client.user}")
+    print("🔥 ON_READY WURDE AUSGEFÜHRT")
+    print(f"👤 Eingeloggt als {client.user}")
     print(f"🔎 CHANNEL_ID: {CHANNEL_ID}")
 
     client.loop.create_task(news_loop())
 
-# TEST MIT @BOT
+# TEST
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
     if client.user in message.mentions:
+        print("💬 Bot wurde erwähnt")
         await message.channel.send("Bot funktioniert ✅")
 
+# START
 client.run(TOKEN)
