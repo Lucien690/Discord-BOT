@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import os
 import sys
 
-# 🔥 sorgt dafür dass Logs sofort erscheinen
+# 🔥 Logs sofort anzeigen
 sys.stdout.reconfigure(line_buffering=True)
 
 print("🚀 SCRIPT STARTET", flush=True)
@@ -25,14 +25,23 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 
+# 🔥 FIXED XML FUNCTION
 def get_events():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
-        response = requests.get(url)
-        root = ET.fromstring(response.content)
+        response = requests.get(url, timeout=10)
+
+        # 🔥 XML robuster machen
+        content = response.content.decode("utf-8", errors="ignore")
+
+        # Problematische Zeichen fixen
+        content = content.replace("&", "&amp;")
+
+        root = ET.fromstring(content)
+
     except Exception as e:
-        print(f"❌ XML Fehler: {e}", flush=True)
+        print(f"❌ XML Fehler (skip): {e}", flush=True)
         return []
 
     events = []
@@ -94,7 +103,7 @@ async def news_loop():
 
                     time_diff = (event_time - now).total_seconds()
 
-                    # 🔔 PRE-ALERT (1 Stunde vorher)
+                    # 🔔 PRE ALERT (1h vorher)
                     if 0 < time_diff <= 3600 and title not in pre_alerted_events:
                         channel = client.get_channel(CHANNEL_ID)
                         if channel:
@@ -104,7 +113,7 @@ async def news_loop():
                             print(f"🔔 Pre-Alert: {title}", flush=True)
                             pre_alerted_events.add(title)
 
-                    # 📊 EVENT RELEASE
+                    # 📊 RELEASE POST
                     if actual and title not in posted_events:
                         channel = client.get_channel(CHANNEL_ID)
                         if channel:
