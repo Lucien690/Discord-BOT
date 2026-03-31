@@ -1,124 +1,134 @@
 import discord
 import requests
-from datetime import datetime, timedelta
 import asyncio
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 import os
 
 TOKEN = os.getenv("TOKEN")
-
 CHANNEL_ID = 1475125646064619541
 
 client = discord.Client(intents=discord.Intents.default())
-sent_events = set()
 
-def get_news():
+sent_reminders = set()
+sent_releases = set()
+
+
+def get_events():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+    response = requests.get(url)
 
-    try:
-        response = requests.get(url, timeout=10)
-
-        if response.status_code != 200:
-            return []
-
-        root = ET.fromstring(response.content)
-
-    except:
-        return []
-
+    root = ET.fromstring(response.content)
     events = []
 
     for event in root.findall("event"):
+        title = event.find("title").text
+        country = event.find("country").text
+        impact = event.find("impact").text
+        date = event.find("date").text
+        time = event.find("time").text
+        forecast = event.find("forecast").text
+        previous = event.find("previous").text
+        actual = event.find("actual").text
+
+        if impact not in ["High", "Medium"]:
+            continue
+
+        if time == "All Day" or time == "Tentative":
+            continue
+
         try:
-            impact = event.find("impact").text
-
-            if impact != "High":
-                continue
-
-            title = event.find("title").text
-            country = event.find("country").text
-            date = event.find("date").text
-            time = event.find("time").text
-
-            events.append({
-                "event": title,
-                "country": country,
-                "date": f"{date} {time}"
-            })
+            event_time = datetime.strptime(f"{date} {time}", "%Y.%m.%d %H:%M")
         except:
             continue
 
+        events.append({
+            "title": title,
+            "country": country,
+            "impact": impact,
+            "time": event_time,
+            "forecast": forecast,
+            "previous": previous,
+            "actual": actual
+        })
+
     return events
 
-def analyze_event(event_name, currency):
-    name = event_name.lower()
 
-    volatility = "⚠️ Normale Volatilität"
-    bias = "Unklar"
+def analyze(actual, forecast, title):
+    try:
+        actual_val = float(actual.replace("%", "").replace("M", ""))
+        forecast_val = float(forecast.replace("%", "").replace("M", ""))
+    except:
+        return "⚠️ Keine klare Analyse möglich"
 
-    if any(x in name for x in ["cpi", "inflation", "interest rate", "fomc", "nfp"]):
-        volatility = "🔥 Hohe Volatilität erwartet!"
+    if actual_val > forecast_val:
+        return "📈 BULLISH"
+    elif actual_val < forecast_val:
+        return "📉 BEARISH"
+    else:
+        return "⚖️ NEUTRAL"
 
-    pairs = f"{currency}/USD, {currency}/JPY, {currency}/EUR"
 
-    if "rate hike" in name or "interest rate" in name:
-        bias = f"{currency} wahrscheinlich STARK 📈"
-    elif "rate cut" in name:
-        bias = f"{currency} wahrscheinlich SCHWACH 📉"
-    elif "nfp" in name or "employment" in name:
-        bias = "Starke Bewegung möglich (datenabhängig)"
-    elif "cpi" in name or "inflation" in name:
-        bias = "Bewegung je nach Inflation"
-
-    return volatility, pairs, bias
-
-async def check_news():
+async def news_loop():
     await client.wait_until_ready()
     channel = await client.fetch_channel(CHANNEL_ID)
 
     while not client.is_closed():
-        data = get_news()
         now = datetime.utcnow()
 
-        for event in data:
-            try:
-                event_time = datetime.strptime(event["date"], "%Y-%m-%d %H:%M")
-            except:
-                continue
+        events = get_events()
 
-            reminder_time = event_time - timedelta(hours=1)
-            event_id = event["event"] + event["date"]
+        for event in events:
+            key = event["title"] + str(event["time"])
 
-            if reminder_time <= now and event_id not in sent_events:
+            time_diff = (event["time"] - now).total_seconds()
 
-                volatility, pairs, bias = analyze_event(event["event"], event["country"])
-
-                role = discord.utils.get(channel.guild.roles, name="HIGH IMPACT!")
-                role_mention = role.mention if role else "@HIGH IMPACT!"
-
+            # ⏰ 1h vorher
+            if 3500 < time_diff < 3700 and key not in sent_reminders:
                 embed = discord.Embed(
-                    title="🚨 High Impact News in 1h",
-                    description=f"**{event['event']}**",
-                    color=discord.Color.red()
+                    title="⏰ UPCOMING EVENT",
+                    description=f"{event['country']} - {event['title']}",
+                    color=discord.Color.orange()
                 )
 
-                embed.add_field(name="🌍 Währung", value=event["country"], inline=True)
-                embed.add_field(name="⏰ Zeit", value=event_time.strftime('%H:%M UTC'), inline=True)
-                embed.add_field(name="📉 Volatilität", value=volatility, inline=False)
-                embed.add_field(name="💱 Paare", value=pairs, inline=False)
-                embed.add_field(name="📊 Erwartung", value=bias, inline=False)
+                embed.add_field(name="📊 Impact", value=event["impact"])
+                embed.add_field(name="🕐 Zeit", value=str(event["time"]))
 
-                embed.set_footer(text="Trading Alert System")
+                await channel.send(embed=embed)
+                sent_reminders.add(key)
 
-                await channel.send(content=role_mention, embed=embed)
+            # 🚨 Release
+            if time_diff < 0 and key not in sent_releases:
+                actual = event["actual"]
+                forecast = event["forecast"]
+                previous = event["previous"]
 
-                sent_events.add(event_id)
+                if actual:
+                    result = analyze(actual, forecast, event["title"])
 
-        await asyncio.sleep(300)
+                    embed = discord.Embed(
+                        title="🚨 ECONOMIC RELEASE",
+                        description=f"{event['country']} - {event['title']}",
+                        color=discord.Color.red()
+                    )
+
+                    embed.add_field(name="📊 Actual", value=actual, inline=True)
+                    embed.add_field(name="📉 Forecast", value=forecast, inline=True)
+                    embed.add_field(name="📈 Previous", value=previous, inline=True)
+
+                    embed.add_field(name="🔥 Ergebnis", value=result, inline=False)
+
+                    await channel.send(content="@everyone 🚨", embed=embed)
+                    sent_releases.add(key)
+
+        await asyncio.sleep(60)
+
 
 @client.event
 async def on_ready():
-    print(f"Bot online: {client.user}")
-    client.loop.create_task(check_news())
+    print("FOREX BOT ONLINE")
+    client.loop.create_task(news_loop())
+
 
 client.run(TOKEN)
