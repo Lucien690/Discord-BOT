@@ -70,7 +70,11 @@ def get_events():
             time_ = event.findtext("time", default="")
             impact = event.findtext("impact", default="low").lower()
 
-            # 🔥 GEÄNDERT: LOW EVENTS ERLAUBT
+            # 🔥 NEU
+            actual = event.findtext("actual", default="N/A")
+            forecast = event.findtext("forecast", default="N/A")
+            previous = event.findtext("previous", default="N/A")
+
             if impact not in ["high", "3", "medium", "low", "1"]:
                 continue
 
@@ -79,7 +83,10 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_,
-                "impact": impact
+                "impact": impact,
+                "actual": actual,
+                "forecast": forecast,
+                "previous": previous
             })
 
         print(f"✅ {len(events)} Events geladen", flush=True)
@@ -110,6 +117,11 @@ async def news_loop():
                 date = event["date"]
                 time_ = event["time"]
                 impact = event["impact"]
+
+                # 🔥 NEU
+                actual = event["actual"]
+                forecast = event["forecast"]
+                previous = event["previous"]
 
                 if time_ == "All Day" or time_ == "":
                     continue
@@ -168,6 +180,21 @@ async def news_loop():
                             risk = "⚖️ Neutral"
                             explanation = "➡️ NAS100 ↔ | 🟡 Gold ↔ | 🛢️ Öl ↔ | ₿ BTC ↔"
 
+                        # 🔥 NEU: einfache Analyse
+                        analysis = "Keine Daten"
+                        try:
+                            a = float(actual.replace("%", "").replace("K", "000"))
+                            f = float(forecast.replace("%", "").replace("K", "000"))
+
+                            if a > f:
+                                analysis = "📈 Besser als erwartet → bullish"
+                            elif a < f:
+                                analysis = "📉 Schlechter als erwartet → bearish"
+                            else:
+                                analysis = "➡️ Wie erwartet → neutral"
+                        except:
+                            pass
+
                         embed = discord.Embed(
                             title=f"📊 {country} - {title}",
                             description="Event läuft jetzt!",
@@ -176,6 +203,14 @@ async def news_loop():
 
                         embed.add_field(name="⏰ Zeit", value=time_, inline=True)
                         embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
+                        # 🔥 NEU: Werte anzeigen
+                        embed.add_field(name="📈 Actual", value=actual, inline=True)
+                        embed.add_field(name="📊 Forecast", value=forecast, inline=True)
+                        embed.add_field(name="📉 Previous", value=previous, inline=True)
+
+                        # 🔥 NEU: Analyse
+                        embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
 
                         embed.add_field(
                             name="🌍 Marktstimmung",
