@@ -21,7 +21,8 @@ client = discord.Client(intents=intents)
 
 # 🔁 Speicher
 sent_events = set()
-pre_alerts = set()
+pre_alerts_1h = set()
+pre_alerts_30m = set()
 
 # 🔥 EVENTS LADEN
 def get_events():
@@ -48,7 +49,7 @@ def get_events():
             date = event.findtext("date", default="")
             time_ = event.findtext("time", default="")
 
-            # 🔥 DEINE ÄNDERUNG (High + Flash)
+            # 🔥 High + Flash
             impact = event.findtext("impact", default="low").lower()
             if impact not in ["high", "3", "medium"]:
                 continue
@@ -99,17 +100,26 @@ async def news_loop():
                     continue
 
                 key = f"{title}_{date}_{time_}"
+                time_diff = (event_time - now).total_seconds()
 
-                # 🔔 1h vorher (JETZT MIT TOLERANZ)
-                if 0 < (event_time - now).total_seconds() <= 3900:
-                    if key not in pre_alerts:
+                # 🔔 1h vorher (mit Toleranz)
+                if 3300 <= time_diff <= 3900:
+                    if key not in pre_alerts_1h:
                         msg = f"🔔 **In 1 Stunde:** {country} - {title} ({time_})"
                         await channel.send(msg)
-                        print(f"🔔 Pre-Alert gesendet: {title}", flush=True)
-                        pre_alerts.add(key)
+                        print(f"🔔 1H Alert: {title}", flush=True)
+                        pre_alerts_1h.add(key)
 
-                # 📤 beim Event (JETZT MIT 5 MIN FENSTER)
-                if 0 < (event_time - now).total_seconds() <= 300:
+                # 🔔 30 Minuten vorher
+                if 1500 <= time_diff <= 2100:
+                    if key not in pre_alerts_30m:
+                        msg = f"⏳ **In 30 Minuten:** {country} - {title} ({time_})"
+                        await channel.send(msg)
+                        print(f"⏳ 30M Alert: {title}", flush=True)
+                        pre_alerts_30m.add(key)
+
+                # 📤 beim Event (5 min Fenster)
+                if 0 < time_diff <= 300:
                     if key not in sent_events:
                         msg = f"📊 **JETZT:** {country} - {title} ({time_})"
                         await channel.send(msg)
