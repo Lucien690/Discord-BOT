@@ -162,7 +162,7 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.lower() == "@forex bot erstelle fake news":
+    if "erstelle fake news" in message.content.lower() and client.user.mentioned_in(message): 
 
         analysis, reaction = analyze("250K", "180K")
 
