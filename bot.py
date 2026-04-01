@@ -57,7 +57,6 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # ✅ HIGH + MEDIUM + LOW
             if impact not in ["high", "3", "medium", "low", "1"]:
                 continue
 
@@ -116,7 +115,6 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
-                # TAGS
                 if impact in ["high", "3"]:
                     mention = "@HIGH IMPACT"
                     color = 0xff0000
@@ -150,31 +148,92 @@ async def news_loop():
                 # 📊 LIVE
                 if 0 < diff < 120 and key not in sent_events:
 
-                    analysis = ""
-                    meaning = ""
-                    reaction = ""
+                    analysis_text = ""
 
                     try:
                         a = float(actual.replace("K","000").replace("%",""))
                         f = float(forecast.replace("K","000").replace("%",""))
+                        diff_val = int(a - f)
 
                         if a > f:
-                            analysis = f"Die Daten ({actual}) liegen über der Erwartung ({forecast}). Die Wirtschaft ist stärker als erwartet."
-                            meaning = "→ Unternehmen wachsen\n→ Konsum steigt\n→ Vertrauen steigt"
-                            reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
+
+                            reaction_block = """
+🌍 Marktauswirkungen:
+
+📈 NAS100 ↑
+📈 US30 ↑
+🛢️ USOIL ↑
+₿ BTC ↑
+🟡 XAUUSD ↓
+"""
+
+                            analysis_text = f"""📊 {country} | High Impact Event
+
+🕒 Status: LIVE
+
+📈 Actual: {actual}
+📊 Forecast: {forecast}
+📉 Previous: {previous}
+
+━━━━━━━━━━━━━━━━━━━
+🧠 Analyse:
+Die Daten liegen über den Erwartungen (+{diff_val}).
+Die Wirtschaft ist stärker als erwartet.
+
+📌 Interpretation:
+• Wachstum steigt
+• Vertrauen steigt
+• USD wird stärker
+
+━━━━━━━━━━━━━━━━━━━
+{reaction_block}
+
+━━━━━━━━━━━━━━━━━━━
+💡 Trading Bias:
+➡️ Indizes: Bullish
+➡️ Gold: Bearish
+➡️ BTC: Bullish
+
+━━━━━━━━━━━━━━━━━━━
+⚠️ Hohe Volatilität möglich!
+"""
 
                         elif a < f:
-                            analysis = f"Die Daten ({actual}) liegen unter der Erwartung ({forecast}). Die Wirtschaft ist schwächer."
-                            meaning = "→ Wachstum sinkt\n→ Unsicherheit steigt\n→ Investoren vorsichtig"
-                            reaction = "📉 NAS100 & US30 fallen\n🟡 Gold steigt\n₿ BTC fällt\n🛢️ Öl fällt"
+
+                            reaction_block = """
+🌍 Marktauswirkungen:
+
+📉 NAS100 ↓
+📉 US30 ↓
+🛢️ USOIL ↓
+₿ BTC ↓
+🟡 XAUUSD ↑
+"""
+
+                            analysis_text = f"""📊 {country} | High Impact Event
+
+🧠 Analyse:
+Die Daten liegen unter den Erwartungen ({diff_val}).
+Die Wirtschaft ist schwächer.
+
+━━━━━━━━━━━━━━━━━━━
+{reaction_block}
+
+━━━━━━━━━━━━━━━━━━━
+💡 Trading Bias:
+➡️ Indizes: Bearish
+➡️ Gold: Bullish
+➡️ BTC: Bearish
+
+━━━━━━━━━━━━━━━━━━━
+⚠️ Hohe Volatilität möglich!
+"""
 
                         else:
-                            analysis = "Die Daten entsprechen der Erwartung."
-                            meaning = "→ Keine Überraschung\n→ Markt stabil"
-                            reaction = "➡️ Kaum Bewegung"
+                            analysis_text = "Daten wie erwartet"
 
                     except:
-                        analysis = "Keine Daten verfügbar"
+                        analysis_text = "Keine Analyse möglich"
 
                     embed = discord.Embed(
                         title=f"📊 {country} - {title}",
@@ -182,15 +241,13 @@ async def news_loop():
                         color=color
                     )
 
-                    embed.add_field(name="📈 Actual", value=actual, inline=True)
-                    embed.add_field(name="📊 Forecast", value=forecast, inline=True)
-                    embed.add_field(name="📉 Previous", value=previous, inline=True)
+                    embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
 
-                    embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
-                    embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
-                    embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
-
-                    embed.add_field(name="💱 Märkte", value=get_pairs(country, title), inline=False)
+                    embed.add_field(
+                        name="💱 Märkte",
+                        value=get_pairs(country, title),
+                        inline=False
+                    )
 
                     await channel.send(content=mention, embed=embed)
                     sent_events.add(key)
@@ -200,7 +257,6 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# ✅ NEUER TEST COMMAND
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -208,36 +264,58 @@ async def on_message(message):
 
     if client.user.mentioned_in(message) and "erstelle fake news" in message.content.lower():
 
-        country = "USD"
-        title = "Fake Event"
-
         actual = "250K"
         forecast = "180K"
         previous = "170K"
 
-        mention = "@HIGH IMPACT"
+        reaction_block = """
+🌍 Marktauswirkungen:
 
-        analysis = f"Die Daten ({actual}) liegen über der Erwartung ({forecast}). Die Wirtschaft ist stärker als erwartet."
-        meaning = "→ Unternehmen wachsen\n→ Konsum steigt\n→ Vertrauen steigt"
-        reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
+📈 NAS100 ↑
+📈 US30 ↑
+🛢️ USOIL ↑
+₿ BTC ↑
+🟡 XAUUSD ↓
+"""
+
+        analysis_text = f"""📊 USD | High Impact Event
+
+🕒 Status: LIVE
+
+📈 Actual: {actual}
+📊 Forecast: {forecast}
+📉 Previous: {previous}
+
+━━━━━━━━━━━━━━━━━━━
+🧠 Analyse:
+Die Daten liegen über den Erwartungen (+70K).
+Die Wirtschaft ist stärker als erwartet.
+
+━━━━━━━━━━━━━━━━━━━
+{reaction_block}
+
+━━━━━━━━━━━━━━━━━━━
+💡 Trading Bias:
+➡️ Indizes: Bullish
+➡️ Gold: Bearish
+➡️ BTC: Bullish
+"""
 
         embed = discord.Embed(
-            title=f"📊 {country} - {title}",
-            description="Event läuft jetzt!",
+            title="📊 USD - Fake Event",
+            description="TEST EVENT",
             color=0xff0000
         )
 
-        embed.add_field(name="📈 Actual", value=actual, inline=True)
-        embed.add_field(name="📊 Forecast", value=forecast, inline=True)
-        embed.add_field(name="📉 Previous", value=previous, inline=True)
+        embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
 
-        embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
-        embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
-        embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
+        embed.add_field(
+            name="💱 Märkte",
+            value=get_pairs("USD"),
+            inline=False
+        )
 
-        embed.add_field(name="💱 Märkte", value=get_pairs(country, title), inline=False)
-
-        await message.channel.send(content=mention, embed=embed)
+        await message.channel.send(content="@HIGH IMPACT", embed=embed)
 
 @client.event
 async def on_ready():
