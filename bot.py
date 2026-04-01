@@ -49,6 +49,28 @@ def get_color_and_impact_name(impact: str):
         return 0x00ff00, "📅 LOW IMPACT"
 
 
+def get_market_reaction(country: str, is_better: bool):
+    arrow = "↑" if is_better else "↓"
+    emoji = "📈" if is_better else "📉"
+
+    if "USD" in country or "US" in country:
+        return f"""{emoji} NAS100 {arrow}    {emoji} US30 {arrow}
+🛢️ USOIL {arrow}     ₿ BTC {arrow}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "EUR" in country:
+        return f"""{emoji} DAX {arrow}    {emoji} EURUSD {'↑' if is_better else '↓'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "JPY" in country:
+        return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "CAD" in country:
+        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
+    elif "AUD" in country:
+        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
+    else:
+        return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
+
+
 def get_events():
     global last_events, last_fetch_time
 
@@ -76,7 +98,6 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # Alle Impact-Stufen verarbeiten (rot, orange, gelb)
             if impact_raw in ["high", "3", "high impact"]:
                 impact = "high"
             elif impact_raw in ["medium", "2", "med"]:
@@ -100,7 +121,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events (alle Impact-Stufen: High + Medium + Low) geladen", flush=True)
+        print(f"✅ {len(events)} Events (alle Impact-Stufen) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -130,7 +151,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Alle Events (High + Medium + Low) mit @everyone", flush=True)
+    print(f"🟢 News-Loop gestartet | Alle Events mit länderspezifischer Reaktion", flush=True)
 
     while not client.is_closed():
         try:
@@ -168,43 +189,45 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
+                print(f"🔍 Prüfe Event: {title} | diff = {diff:.0f} Sekunden", flush=True)
+
                 # 1-Stunden-Vorwarnung
-                if 3500 < diff < 3700 and key not in pre_alerts_1h:
+                if 3000 < diff < 4200 and key not in pre_alerts_1h:   # erweitertes Fenster
+                    print(f"🔔 1H Alert gesendet: {title}", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **58 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
-                    embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                 # 30-Minuten-Vorwarnung
-                if 1700 < diff < 1900 and key not in pre_alerts_30m:
+                if 1500 < diff < 2100 and key not in pre_alerts_30m:
+                    print(f"⏳ 30M Alert gesendet: {title}", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **28 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
-                    embed.add_field(name="🌍 Volatilität", value="Marktbewegung erwartet – Positionen prüfen!", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE EVENT – Anfängerfreundlich mit Aktien-Emojis
-                if 0 < diff < 180 and key not in sent_events:
+                # LIVE EVENT
+                if -300 < diff < 600 and key not in sent_events:   # erweitertes Fenster zum Testen
+                    print(f"🚀 LIVE Event wird gesendet: {title}", flush=True)
+
                     is_better = False
                     diff_val = 0
                     try:
-                        a_str = str(event["actual"]).replace("K", "000").replace("%", "").replace(",", "").strip()
-                        f_str = str(event["forecast"]).replace("K", "000").replace("%", "").replace(",", "").strip()
-                        a = float(a_str) if a_str and a_str.replace(".", "").replace("-", "").replace(" ", "").isdigit() else 0.0
-                        f = float(f_str) if f_str and f_str.replace(".", "").replace("-", "").replace(" ", "").isdigit() else 0.0
+                        a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
+                        f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
                         diff_val = round(a - f, 1)
-                        is_better = a > f if a != 0 and f != 0 else False
+                        is_better = a > f if a and f else False
                     except:
                         pass
 
@@ -216,12 +239,10 @@ async def news_loop():
 {'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal für die Wirtschaft.
+Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
 
 {market_emoji} Was das für den Markt bedeutet:
-{market_emoji} NAS100 {arrow}    {market_emoji} US30 {arrow}
-🛢️ USOIL {arrow}     ₿ BTC {arrow}
-🟡 XAUUSD {'↓' if is_better else '↑'}   (Gold {'fällt' if is_better else 'steigt'} meist)
+{get_market_reaction(event["country"], is_better)}
 
 💡 Praktischer Tipp für Anfänger:
 Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
@@ -246,8 +267,6 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
                     msg = await channel.send(content=mention, embed=embed)
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-
-                    print(f"🚀 LIVE Event gesendet: {title} ({impact})", flush=True)
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
