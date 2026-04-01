@@ -25,6 +25,9 @@ sent_events = set()
 pre_alerts_1h = set()
 pre_alerts_30m = set()
 
+# 🔥 NEU (CACHE)
+last_events = []
+
 # 🔥 EVENTS LADEN
 def get_events():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -34,13 +37,13 @@ def get_events():
 
         if not response.content or b"<" not in response.content:
             print("❌ Kein gültiges XML", flush=True)
-            return []
+            return None  # 🔥 geändert
 
         try:
             root = ET.fromstring(response.content)
         except ET.ParseError as e:
             print(f"❌ XML kaputt → skip: {e}", flush=True)
-            return []
+            return None  # 🔥 geändert
 
         events = []
 
@@ -70,11 +73,15 @@ def get_events():
             })
 
         print(f"✅ {len(events)} Events geladen", flush=True)
+
+        global last_events  # 🔥 NEU
+        last_events = events  # 🔥 NEU
+
         return events
 
     except Exception as e:
         print(f"❌ Fehler beim Laden: {e}", flush=True)
-        return []
+        return None  # 🔥 geändert
 
 # 🔁 LOOP
 async def news_loop():
@@ -95,6 +102,11 @@ async def news_loop():
 
             events = get_events()
 
+            # 🔥 NEU (CACHE FALLBACK)
+            if events is None:
+                print("⚠️ Nutze alte Events (Cache)", flush=True)
+                events = last_events
+
             for event in events:
                 title = event["title"]
                 country = event["country"]
@@ -114,7 +126,6 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 time_diff = (event_time - now).total_seconds()
 
-                # 💱 Paare
                 pairs = ""
                 if "USD" in country:
                     pairs = "EUR/USD, GBP/USD, XAU/USD"
@@ -155,7 +166,7 @@ async def news_loop():
                         print(f"⏳ 30M Alert: {title}", flush=True)
                         pre_alerts_30m.add(key)
 
-                # 📊 EVENT
+                # 📊 Event
                 if 0 < time_diff <= 300:
                     if key not in sent_events:
 
