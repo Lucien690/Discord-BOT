@@ -1,6 +1,7 @@
 import discord
 import asyncio
 import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
 import sys
@@ -28,32 +29,36 @@ def get_pairs(country, title=""):
 def get_events():
     global last_events
 
-    url = "https://calendar.fxstreet.com/v1/eventDates"
+    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
         response = requests.get(url, timeout=10)
-        data = response.json()
+
+        if not response.content or b"<" not in response.content:
+            print("❌ Kein gültiges XML → Cache", flush=True)
+            return last_events
+
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError as e:
+            print(f"❌ XML kaputt → Cache: {e}", flush=True)
+            return last_events
 
         events = []
 
-        for event in data:
-            title = event.get("event", "N/A")
-            country = event.get("countryCode", "N/A")
-            time_raw = event.get("date", "")
-            impact = str(event.get("importance", "1"))
+        for event in root.findall("event"):
+            title = event.findtext("title", "N/A")
+            country = event.findtext("country", "N/A")
+            date = event.findtext("date", "")
+            time_ = event.findtext("time", "")
+            impact = event.findtext("impact", "low").lower()
 
-            actual = event.get("actual", "N/A")
-            forecast = event.get("forecast", "N/A")
-            previous = event.get("previous", "N/A")
+            actual = event.findtext("actual", "N/A")
+            forecast = event.findtext("forecast", "N/A")
+            previous = event.findtext("previous", "N/A")
 
-            if impact not in ["2", "3"]:
-                continue
-
-            try:
-                dt = datetime.fromisoformat(time_raw.replace("Z", ""))
-                date = dt.strftime("%Y-%m-%d")
-                time_ = dt.strftime("%H:%M")
-            except:
+            # ✅ HIGH + MEDIUM + LOW
+            if impact not in ["high", "3", "medium", "low", "1"]:
                 continue
 
             events.append({
@@ -62,18 +67,18 @@ def get_events():
                 "date": date,
                 "time": time_,
                 "impact": impact,
-                "actual": actual if actual else "N/A",
-                "forecast": forecast if forecast else "N/A",
-                "previous": previous if previous else "N/A"
+                "actual": actual,
+                "forecast": forecast,
+                "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen (FXStreet)", flush=True)
+        print(f"✅ {len(events)} Events geladen (XML)", flush=True)
 
         last_events = events
         return events
 
     except Exception as e:
-        print(f"❌ FXStreet Fehler → Cache: {e}", flush=True)
+        print(f"❌ Fehler → Cache: {e}", flush=True)
         return last_events
 
 async def news_loop():
@@ -84,9 +89,7 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            # ✅ ZEIT FIX
             now = datetime.now() + timedelta(hours=2)
-
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -102,8 +105,10 @@ async def news_loop():
                 forecast = event["forecast"]
                 previous = event["previous"]
 
+                if time_ == "" or time_ == "All Day":
+                    continue
+
                 try:
-                    # ✅ ZEIT FIX
                     event_time = parser.parse(f"{date} {time_}") + timedelta(hours=2)
                 except:
                     continue
@@ -111,93 +116,89 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
-                mention = "@HIGH IMPACT" if impact == "3" else "@IMPACT"
+                # ✅ TAG SYSTEM
+                if impact in ["high", "3"]:
+                    mention = "@HIGH IMPACT"
+                    color = 0xff0000
+                elif impact == "medium":
+                    mention = "@IMPACT"
+                    color = 0xffcc00
+                else:
+                    mention = "@LOW IMPACT"
+                    color = 0x00ff00
 
-                if 3500 < diff < 3700:
-                    if key not in pre_alerts_1h:
-                        embed = discord.Embed(
-                            title=f"🔔 {country} - {title}",
-                            description="Event in 1 Stunde",
-                            color=0xff0000
-                        )
-                        await channel.send(content=mention, embed=embed)
-                        pre_alerts_1h.add(key)
+                # 🔔 1H ALERT
+                if 3500 < diff < 3700 and key not in pre_alerts_1h:
+                    embed = discord.Embed(
+                        title=f"🔔 {country} - {title}",
+                        description="Event in 1 Stunde",
+                        color=color
+                    )
+                    await channel.send(content=mention, embed=embed)
+                    pre_alerts_1h.add(key)
 
-                if 1700 < diff < 1900:
-                    if key not in pre_alerts_30m:
-                        embed = discord.Embed(
-                            title=f"⏳ {country} - {title}",
-                            description="Event in 30 Minuten",
-                            color=0xffcc00
-                        )
-                        await channel.send(content=mention, embed=embed)
-                        pre_alerts_30m.add(key)
+                # ⏳ 30M ALERT
+                if 1700 < diff < 1900 and key not in pre_alerts_30m:
+                    embed = discord.Embed(
+                        title=f"⏳ {country} - {title}",
+                        description="Event in 30 Minuten",
+                        color=color
+                    )
+                    await channel.send(content=mention, embed=embed)
+                    pre_alerts_30m.add(key)
 
-                if 0 < diff < 120:
-                    if key not in sent_events:
+                # 📊 LIVE EVENT
+                if 0 < diff < 120 and key not in sent_events:
 
-                        analysis = "Keine Daten"
-                        meaning = ""
-                        reaction = ""
+                    analysis = ""
+                    meaning = ""
+                    reaction = ""
 
-                        try:
-                            a = float(actual.replace("K","000").replace("%",""))
-                            f = float(forecast.replace("K","000").replace("%",""))
+                    try:
+                        a = float(actual.replace("K","000").replace("%",""))
+                        f = float(forecast.replace("K","000").replace("%",""))
 
-                            if a > f:
-                                analysis = f"Die Daten ({actual}) sind besser als erwartet ({forecast}). Die Wirtschaft ist stärker."
-                                meaning = "→ Wachstum steigt\n→ Konsum steigt\n→ Vertrauen steigt"
-                                reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
+                        if a > f:
+                            analysis = f"Die Daten ({actual}) liegen über der Erwartung ({forecast}). Die Wirtschaft ist stärker als erwartet."
+                            meaning = "→ Unternehmen wachsen\n→ Konsum steigt\n→ Vertrauen steigt"
+                            reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
 
-                            elif a < f:
-                                analysis = f"Die Daten ({actual}) sind schlechter als erwartet ({forecast}). Die Wirtschaft schwächelt."
-                                meaning = "→ Wachstum sinkt\n→ Unsicherheit steigt\n→ Investoren vorsichtig"
-                                reaction = "📉 NAS100 & US30 fallen\n🟡 Gold steigt\n₿ BTC fällt\n🛢️ Öl fällt"
+                        elif a < f:
+                            analysis = f"Die Daten ({actual}) liegen unter der Erwartung ({forecast}). Die Wirtschaft ist schwächer."
+                            meaning = "→ Wachstum sinkt\n→ Unsicherheit steigt\n→ Investoren vorsichtig"
+                            reaction = "📉 NAS100 & US30 fallen\n🟡 Gold steigt\n₿ BTC fällt\n🛢️ Öl fällt"
 
-                            else:
-                                analysis = "Die Daten entsprechen der Erwartung."
-                                meaning = "→ Keine Überraschung\n→ Markt stabil"
-                                reaction = "➡️ Kaum Bewegung"
+                        else:
+                            analysis = "Die Daten entsprechen der Erwartung."
+                            meaning = "→ Keine Überraschung\n→ Markt stabil"
+                            reaction = "➡️ Kaum Bewegung"
 
-                        except:
-                            pass
+                    except:
+                        analysis = "Keine Daten verfügbar"
 
-                        embed = discord.Embed(
-                            title=f"📊 {country} - {title}",
-                            description="Event läuft jetzt!",
-                            color=0xff0000
-                        )
+                    embed = discord.Embed(
+                        title=f"📊 {country} - {title}",
+                        description="Event läuft jetzt!",
+                        color=color
+                    )
 
-                        embed.add_field(name="📈 Actual", value=actual, inline=True)
-                        embed.add_field(name="📊 Forecast", value=forecast, inline=True)
-                        embed.add_field(name="📉 Previous", value=previous, inline=True)
+                    embed.add_field(name="📈 Actual", value=actual, inline=True)
+                    embed.add_field(name="📊 Forecast", value=forecast, inline=True)
+                    embed.add_field(name="📉 Previous", value=previous, inline=True)
 
-                        embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
-                        embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
-                        embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
+                    embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
+                    embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
+                    embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
 
-                        embed.add_field(
-                            name="💱 Märkte",
-                            value=get_pairs(country, title),
-                            inline=False
-                        )
+                    embed.add_field(name="💱 Märkte", value=get_pairs(country, title), inline=False)
 
-                        await channel.send(content=mention, embed=embed)
-                        sent_events.add(key)
+                    await channel.send(content=mention, embed=embed)
+                    sent_events.add(key)
 
         except Exception as e:
             print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
-
-# TEST COMMAND bleibt gleich
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-
-    if "erstelle fake news" in message.content.lower():
-        await message.channel.send("✅ Test funktioniert!")
 
 @client.event
 async def on_ready():
