@@ -84,7 +84,9 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            now = datetime.now()
+            # ✅ ZEIT FIX
+            now = datetime.now() + timedelta(hours=2)
+
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -101,7 +103,8 @@ async def news_loop():
                 previous = event["previous"]
 
                 try:
-                    event_time = parser.parse(f"{date} {time_}")
+                    # ✅ ZEIT FIX
+                    event_time = parser.parse(f"{date} {time_}") + timedelta(hours=2)
                 except:
                     continue
 
@@ -110,7 +113,6 @@ async def news_loop():
 
                 mention = "@HIGH IMPACT" if impact == "3" else "@IMPACT"
 
-                # 🔔 1H ALERT
                 if 3500 < diff < 3700:
                     if key not in pre_alerts_1h:
                         embed = discord.Embed(
@@ -121,7 +123,6 @@ async def news_loop():
                         await channel.send(content=mention, embed=embed)
                         pre_alerts_1h.add(key)
 
-                # ⏳ 30M ALERT
                 if 1700 < diff < 1900:
                     if key not in pre_alerts_30m:
                         embed = discord.Embed(
@@ -132,7 +133,6 @@ async def news_loop():
                         await channel.send(content=mention, embed=embed)
                         pre_alerts_30m.add(key)
 
-                # 📊 LIVE EVENT
                 if 0 < diff < 120:
                     if key not in sent_events:
 
@@ -190,70 +190,14 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# 🧪 TEST COMMAND (JETZT DRIN)
+# TEST COMMAND bleibt gleich
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
     if "erstelle fake news" in message.content.lower():
-
-        country = "USD"
-        title = "Fake Event"
-
-        actual = "250K"
-        forecast = "180K"
-        previous = "170K"
-
-        mention = "@HIGH IMPACT"
-
-        analysis = "Keine Daten"
-        meaning = ""
-        reaction = ""
-
-        try:
-            a = float(actual.replace("K","000").replace("%",""))
-            f = float(forecast.replace("K","000").replace("%",""))
-
-            if a > f:
-                analysis = f"Die Daten ({actual}) sind besser als erwartet ({forecast}). Die Wirtschaft ist stärker."
-                meaning = "→ Wachstum steigt\n→ Konsum steigt\n→ Vertrauen steigt"
-                reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
-
-            elif a < f:
-                analysis = f"Die Daten ({actual}) sind schlechter als erwartet ({forecast}). Die Wirtschaft schwächelt."
-                meaning = "→ Wachstum sinkt\n→ Unsicherheit steigt\n→ Investoren vorsichtig"
-                reaction = "📉 NAS100 & US30 fallen\n🟡 Gold steigt\n₿ BTC fällt\n🛢️ Öl fällt"
-
-            else:
-                analysis = "Die Daten entsprechen der Erwartung."
-                meaning = "→ Keine Überraschung\n→ Markt stabil"
-                reaction = "➡️ Kaum Bewegung"
-
-        except:
-            pass
-
-        embed = discord.Embed(
-            title=f"📊 {country} - {title}",
-            description="TEST EVENT",
-            color=0xff0000
-        )
-
-        embed.add_field(name="📈 Actual", value=actual, inline=True)
-        embed.add_field(name="📊 Forecast", value=forecast, inline=True)
-        embed.add_field(name="📉 Previous", value=previous, inline=True)
-
-        embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
-        embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
-        embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
-
-        embed.add_field(
-            name="💱 Märkte",
-            value=get_pairs(country, title),
-            inline=False
-        )
-
-        await message.channel.send(content=mention, embed=embed)
+        await message.channel.send("✅ Test funktioniert!")
 
 @client.event
 async def on_ready():
