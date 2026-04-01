@@ -49,8 +49,14 @@ def get_events():
     global last_events
 
     try:
-        url = "https://www.forexfactory.com/calendar"
-        headers = {"User-Agent": "Mozilla/5.0"}
+        # ✅ NUR DAS GEÄNDERT
+        url = "https://www.forexfactory.com/calendar?day=today"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.forexfactory.com/"
+        }
+
         html = requests.get(url, headers=headers, timeout=10).text
 
         soup = BeautifulSoup(html, "html.parser")
@@ -96,6 +102,7 @@ def get_events():
                 continue
 
         print(f"✅ {len(events)} Events (Scraping)", flush=True)
+
         last_events = events
         return events
 
@@ -111,7 +118,6 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            # ✅ FIX: lokale Zeit
             now = datetime.now()
             print(f"⏰ Check um {now}", flush=True)
 
@@ -132,7 +138,6 @@ async def news_loop():
                     continue
 
                 try:
-                    # ✅ FIX: keine Zeitzone mehr
                     event_time = datetime.strptime(
                         f"{date} {time_}", "%Y-%m-%d %H:%M"
                     )
@@ -143,7 +148,7 @@ async def news_loop():
                 diff = (event_time - now).total_seconds()
 
                 color = 0xff0000 if impact in ["high", "3"] else 0xffcc00
-                mention = "@HIGH IMPACT" if impact in ["high", "3"] else None
+                mention = "@HIGH IMPPACT" if impact in ["high", "3"] else None
 
                 if 0 < diff <= 3900:
                     if key not in pre_alerts_1h:
@@ -156,7 +161,6 @@ async def news_loop():
                         embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
 
                         await channel.send(content=mention, embed=embed)
-                        print(f"🔔 1h Alert: {title}", flush=True)
                         pre_alerts_1h.add(key)
 
                 if 0 < diff <= 2100:
@@ -170,7 +174,6 @@ async def news_loop():
                         embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
 
                         await channel.send(content=mention, embed=embed)
-                        print(f"⏳ 30m Alert: {title}", flush=True)
                         pre_alerts_30m.add(key)
 
                 if 0 < diff <= 300:
@@ -228,7 +231,6 @@ async def news_loop():
                         )
 
                         await channel.send(content=mention, embed=embed)
-                        print(f"📤 Event gesendet: {title}", flush=True)
                         sent_events.add(key)
 
         except Exception as e:
@@ -243,7 +245,6 @@ async def on_message(message):
 
     if "test" in message.content.lower():
         await message.channel.send("✅ Bot funktioniert!")
-        print("💬 Test Antwort gesendet", flush=True)
 
     if message.content.lower() == "!force news":
         embed = discord.Embed(
@@ -278,7 +279,6 @@ async def on_message(message):
         )
 
         await message.channel.send(content="@HIGH IMPACT", embed=embed)
-        print("🧪 Test News gesendet", flush=True)
 
 @client.event
 async def on_ready():
