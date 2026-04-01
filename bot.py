@@ -53,8 +53,8 @@ def get_events():
             country = event.findtext("country", default="N/A")
             date = event.findtext("date", default="")
             time_ = event.findtext("time", default="")
-
             impact = event.findtext("impact", default="low").lower()
+
             if impact not in ["high", "3", "medium"]:
                 continue
 
@@ -89,21 +89,12 @@ async def news_loop():
 
             events = get_events()
 
-            # 🧪 TEST EVENT (2 Minuten in Zukunft)
-            test_time = now + timedelta(minutes=2)
-            events.append({
-                "title": "TEST NEWS",
-                "country": "USD",
-                "date": test_time.strftime("%Y-%m-%d"),
-                "time": test_time.strftime("%H:%M"),
-                "impact": "high"
-            })
-
             for event in events:
                 title = event["title"]
                 country = event["country"]
                 date = event["date"]
                 time_ = event["time"]
+                impact = event["impact"]
 
                 if time_ == "All Day" or time_ == "":
                     continue
@@ -118,27 +109,59 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
+                # 🎨 Farben
+                color = 0xff0000 if impact in ["high", "3"] else 0xffcc00
+
+                # 📣 Rolle für High Impact
+                mention = "@HIGH IMPACT" if impact in ["high", "3"] else ""
+
                 # 🔔 1h vorher
                 if 0 < diff <= 3900:
                     if key not in pre_alerts_1h:
-                        msg = f"🔔 **In 1 Stunde:** {country} - {title} ({time_})"
-                        await channel.send(msg)
+                        embed = discord.Embed(
+                            title=f"🔔 {country} - {title}",
+                            description="Event in 1 Stunde",
+                            color=color
+                        )
+                        embed.add_field(name="⏰ Zeit", value=time_, inline=True)
+                        embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
+                        await channel.send(content=mention, embed=embed)
                         print(f"🔔 1h Alert: {title}", flush=True)
                         pre_alerts_1h.add(key)
 
                 # ⏳ 30min vorher
                 if 0 < diff <= 2100:
                     if key not in pre_alerts_30m:
-                        msg = f"⏳ **In 30 Minuten:** {country} - {title} ({time_})"
-                        await channel.send(msg)
+                        embed = discord.Embed(
+                            title=f"⏳ {country} - {title}",
+                            description="Event in 30 Minuten",
+                            color=color
+                        )
+                        embed.add_field(name="⏰ Zeit", value=time_, inline=True)
+                        embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
+                        await channel.send(content=mention, embed=embed)
                         print(f"⏳ 30m Alert: {title}", flush=True)
                         pre_alerts_30m.add(key)
 
                 # 📤 beim Event
                 if 0 < diff <= 300:
                     if key not in sent_events:
-                        msg = f"📊 **JETZT:** {country} - {title} ({time_})"
-                        await channel.send(msg)
+                        embed = discord.Embed(
+                            title=f"📊 {country} - {title}",
+                            description="Event läuft jetzt!",
+                            color=color
+                        )
+                        embed.add_field(name="⏰ Zeit", value=time_, inline=True)
+                        embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+                        embed.add_field(
+                            name="💱 Betroffene Paare",
+                            value=f"{country} Pairs",
+                            inline=False
+                        )
+
+                        await channel.send(content=mention, embed=embed)
                         print(f"📤 Event gesendet: {title}", flush=True)
                         sent_events.add(key)
 
@@ -154,7 +177,7 @@ async def on_message(message):
         return
 
     if "test" in message.content.lower():
-        await message.channel.send("🤖 Bot läuft!")
+        await message.channel.send("✅ Bot funktioniert!")
         print("💬 Test Antwort gesendet", flush=True)
 
 # 🚀 START
