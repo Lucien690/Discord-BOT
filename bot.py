@@ -15,11 +15,6 @@ print("🚀 SCRIPT STARTET", flush=True)
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
 
-# Rollen-IDs (unbedingt in .env eintragen!)
-HIGH_ROLE_ID = int(os.getenv("HIGH_ROLE_ID", "0"))
-MEDIUM_ROLE_ID = int(os.getenv("MEDIUM_ROLE_ID", "0"))
-LOW_ROLE_ID = int(os.getenv("LOW_ROLE_ID", "0"))
-
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -32,28 +27,31 @@ pre_alerts_30m = set()
 last_events = []
 last_fetch_time = None
 loop_started = False
-message_ids_to_delete = {}   # {message_id: delete_time}
+message_ids_to_delete = {}  # {message_id: delete_time}
 
 berlin_tz = tz.gettz("Europe/Berlin")
+
+
+def get_mention():
+    return "@everyone"
 
 
 def get_pairs(country: str, title: str = "") -> str:
     return "NAS100, US30, XAUUSD, USOIL, BTC"
 
 
-def get_mention_and_color(impact: str):
+def get_color_and_impact_name(impact: str):
     if impact == "high":
-        return f"<@&{HIGH_ROLE_ID}>", 0xff0000
+        return 0xff0000, "🚨 HIGH IMPACT"
     elif impact == "medium":
-        return f"<@&{MEDIUM_ROLE_ID}>", 0xffaa00
+        return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return f"<@&{LOW_ROLE_ID}>", 0x00ff00
+        return 0x00ff00, "📅 LOW IMPACT"
 
 
 def get_events():
     global last_events, last_fetch_time
 
-    # Cache: Nur alle 4 Minuten neu laden
     if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 240:
         return last_events
 
@@ -101,20 +99,14 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events erfolgreich geladen", flush=True)
+        print(f"✅ {len(events)} Events (alle Impact-Stufen) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 429:
-            print("⚠️ Rate Limit (429) erreicht – warte länger...", flush=True)
-        else:
-            print(f"❌ HTTP Fehler: {e}", flush=True)
     except Exception as e:
         print(f"❌ Fehler beim Laden der Events: {e}", flush=True)
-
-    return last_events
+        return last_events
 
 
 async def delete_old_messages(channel):
@@ -137,7 +129,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Deutsche Zeit (MEZ/MESZ)", flush=True)
+    print(f"🟢 News-Loop gestartet | Alle News mit @everyone", flush=True)
 
     while not client.is_closed():
         try:
@@ -172,33 +164,38 @@ async def news_loop():
                     pre_alerts_30m.discard(key)
                     continue
 
-                mention, color = get_mention_and_color(impact)
+                mention = get_mention()
+                color, impact_name = get_color_and_impact_name(impact)
 
-                # 1 Stunde vorher
+                # ==================== 1-STUNDEN-VORWARNUNG ====================
                 if 3500 < diff < 3700 and key not in pre_alerts_1h:
                     embed = discord.Embed(
-                        title=f"🔔 {country} — {title}",
-                        description=f"**Event in ca. 1 Stunde** (um {event_time_berlin.strftime('%H:%M')} Uhr)",
+                        title=f"{impact_name} – {country} {title}",
+                        description=f"🕒 Event in ca. **58 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
+                    embed.add_field(name="🌍 Volatilität", value="Hohe Marktreaktion erwartet", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+                    print(f"🔔 1H Alert gesendet: {title}", flush=True)
 
-                # 30 Minuten vorher
+                # ==================== 30-MINUTEN-VORWARNUNG ====================
                 if 1700 < diff < 1900 and key not in pre_alerts_30m:
                     embed = discord.Embed(
-                        title=f"⏳ {country} — {title}",
-                        description=f"**Event in ca. 30 Minuten** (um {event_time_berlin.strftime('%H:%M')} Uhr)",
+                        title=f"{impact_name} – {country} {title}",
+                        description=f"🕒 Event in ca. **28 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
+                    embed.add_field(name="🌍 Volatilität", value="Marktbewegung erwartet – Positionen prüfen!", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+                    print(f"⏳ 30M Alert gesendet: {title}", flush=True)
 
-                # LIVE Event
+                # ==================== LIVE EVENT ====================
                 if 0 < diff < 180 and key not in sent_events:
                     is_better = False
                     diff_val = 0
@@ -227,7 +224,7 @@ async def news_loop():
 
                     analysis_text = f"""📊 **{country} | {title}**
 
-🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M Uhr')}**
+🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
 📈 Actual:   **{event['actual']}**
 📊 Forecast: **{event['forecast']}**
@@ -248,8 +245,8 @@ Die Daten liegen **{'über' if is_better else 'unter'}** den Erwartungen ({'+' i
 """
 
                     embed = discord.Embed(
-                        title=f"📊 {country} — {title}",
-                        description="**High Impact Event läuft JETZT!**",
+                        title=f"{impact_name} – {country} {title}",
+                        description="**Event läuft JETZT!**",
                         color=color,
                         timestamp=now_berlin
                     )
@@ -260,15 +257,15 @@ Die Daten liegen **{'über' if is_better else 'unter'}** den Erwartungen ({'+' i
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    print(f"🚀 LIVE gesendet: {title}", flush=True)
+                    print(f"🚀 LIVE Event gesendet: {title} ({impact})", flush=True)
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(300)  # 5 Minuten – Rate-Limit-sicher
+        await asyncio.sleep(300)  # 5 Minuten
 
 
-# ==================== FAKE NEWS TEST COMMAND ====================
+# ==================== FAKE NEWS TEST ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -276,52 +273,41 @@ async def on_message(message):
 
     content_lower = message.content.lower()
 
-    # Debug in Logs
     print(f"📨 Nachricht erhalten: {message.content}", flush=True)
     print(f"🤖 Bot erwähnt? {client.user.mentioned_in(message)}", flush=True)
 
-    # Trigger: Bot erwähnen + "fake" oder "test" im Text
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
 
-        analysis_text = """📊 **USD | Fake High Impact Event**
-
-🕒 **Status:** LIVE
+        embed = discord.Embed(
+            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            description="**TEST – nur zur Überprüfung**",
+            color=0xff0000
+        )
+        embed.add_field(
+            name="📊 Marktanalyse",
+            value="""🕒 **Status:** LIVE
 
 📈 Actual:   **250K**
 📊 Forecast: **180K**
 📉 Previous: **170K**
 
-━━━━━━━━━━━━━━━━━━━
-🧠 **Analyse:**
-Die Daten liegen **deutlich über** den Erwartungen (+70K).
+🧠 Die Daten liegen **deutlich über** den Erwartungen (+70K).
 
 ━━━━━━━━━━━━━━━━━━━
 🌍 **Marktreaktion erwartet:**
-
-📈 NAS100 ↑
-📈 US30 ↑
-🛢️ USOIL ↑
-₿ BTC ↑
-🟡 XAUUSD ↓
+📈 NAS100 ↑   US30 ↑   USOIL ↑   ₿ BTC ↑   🟡 XAUUSD ↓
 
 ━━━━━━━━━━━━━━━━━━━
 💡 **Trading Bias:**
-➡️ Indizes: **Bullish**
-➡️ Gold: **Bearish**
-➡️ BTC: **Bullish**
-"""
-
-        embed = discord.Embed(
-            title="📊 USD — Fake Event (Test)",
-            description="**TEST — nur zur Überprüfung**",
-            color=0xff0000
+➡️ Indizes: **Bullish**  
+➡️ Gold: **Bearish**  
+➡️ BTC: **Bullish**""",
+            inline=False
         )
-        embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
         embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
 
-        await message.channel.send(content="<@&HIGH_ROLE_ID> TEST", embed=embed)
-        return
+        await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
