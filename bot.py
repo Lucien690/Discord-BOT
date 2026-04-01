@@ -151,7 +151,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Alle Events mit länderspezifischer Reaktion", flush=True)
+    print(f"🟢 News-Loop gestartet | 1-Stunden-Erinnerung aktiv", flush=True)
 
     while not client.is_closed():
         try:
@@ -180,47 +180,44 @@ async def news_loop():
 
                 diff = (event_time_berlin - now_berlin).total_seconds()
 
-                if diff < -7200:
-                    sent_events.discard(key)
-                    pre_alerts_1h.discard(key)
-                    pre_alerts_30m.discard(key)
-                    continue
+                print(f"🔍 Prüfe Event: {title} | diff = {diff:.0f} Sekunden", flush=True)
 
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                print(f"🔍 Prüfe Event: {title} | diff = {diff:.0f} Sekunden", flush=True)
-
-                # 1-Stunden-Vorwarnung
-                if 3000 < diff < 4200 and key not in pre_alerts_1h:   # erweitertes Fenster
-                    print(f"🔔 1H Alert gesendet: {title}", flush=True)
+                # 1-Stunden-Vorwarnung (ca. 45 bis 75 Minuten vorher)
+                if 2700 < diff < 4500 and key not in pre_alerts_1h:
+                    minutes = int(diff / 60)
+                    print(f"🔔 1H-Erinnerung gesendet: {title} (in {minutes} Minuten)", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 Event in ca. **58 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
+                        description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
+                    embed.add_field(name="🌍 Volatilität", value="Hohe Marktreaktion erwartet", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                 # 30-Minuten-Vorwarnung
-                if 1500 < diff < 2100 and key not in pre_alerts_30m:
-                    print(f"⏳ 30M Alert gesendet: {title}", flush=True)
+                if 1200 < diff < 2400 and key not in pre_alerts_30m:
+                    minutes = int(diff / 60)
+                    print(f"⏳ 30M-Erinnerung gesendet: {title} (in {minutes} Minuten)", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 Event in ca. **28 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
+                        description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
+                    embed.add_field(name="🌍 Volatilität", value="Marktbewegung erwartet – Positionen prüfen!", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE EVENT
-                if -300 < diff < 600 and key not in sent_events:   # erweitertes Fenster zum Testen
-                    print(f"🚀 LIVE Event wird gesendet: {title}", flush=True)
-
+                # LIVE Event
+                if -600 < diff < 1800 and key not in sent_events:
+                    print(f"🚀 LIVE Event gesendet: {title}", flush=True)
                     is_better = False
                     diff_val = 0
                     try:
@@ -271,7 +268,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)  # alle 60 Sekunden zum Testen
 
 
 # ==================== FAKE NEWS TEST ====================
