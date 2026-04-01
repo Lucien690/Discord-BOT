@@ -4,13 +4,15 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
+import sys
 from dateutil import parser
+
+sys.stdout.reconfigure(line_buffering=True)
 
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-intents = discord.Intents.default()
-client = discord.Client(intents=intents)
+client = discord.Client(intents=discord.Intents.default())
 
 sent_events = set()
 alerted_events = set()
@@ -23,67 +25,27 @@ def get_markets():
     return "NAS100, US30, XAUUSD, USOIL, BTC"
 
 # =========================
-# 🧠 ANALYSE (VERBESSERT)
+# 🧠 ANALYSE (EINFACH & STABIL)
 # =========================
 def analyze(actual, forecast):
     try:
         a = float(actual.replace("K","000").replace("%",""))
         f = float(forecast.replace("K","000").replace("%",""))
 
-        diff = a - f
-        diff_percent = abs(diff) / f if f != 0 else 0
+        if a > f:
+            return "📈 Besser als erwartet → bullish", "🟢 Risk-On → Märkte steigen"
 
-        # 📈 POSITIV
-        if diff > 0:
+        elif a < f:
+            return "📉 Schlechter als erwartet → bearish", "🔴 Risk-Off → Märkte fallen"
 
-            if diff_percent > 0.2:
-                strength = "stark besser als erwartet"
-                market = "📈 Starke Bewegung nach oben wahrscheinlich"
-            elif diff_percent > 0.05:
-                strength = "spürbar besser als erwartet"
-                market = "📈 Märkte steigen moderat"
-            else:
-                strength = "leicht besser als erwartet"
-                market = "📈 Kleine Aufwärtsbewegung"
-
-            analysis = f"📈 {strength}"
-            meaning = "Die Wirtschaft zeigt Stärke → Investoren kaufen riskante Assets"
-            reaction = f"🟢 Risk-On\n{market}"
-
-        # 📉 NEGATIV
-        elif diff < 0:
-
-            if diff_percent > 0.2:
-                strength = "deutlich schlechter als erwartet"
-                market = "📉 Starke Abverkäufe möglich"
-            elif diff_percent > 0.05:
-                strength = "spürbar schlechter als erwartet"
-                market = "📉 Märkte fallen moderat"
-            else:
-                strength = "leicht schlechter als erwartet"
-                market = "📉 Kleine Abwärtsbewegung"
-
-            analysis = f"📉 {strength}"
-            meaning = "Die Wirtschaft schwächelt → Unsicherheit steigt"
-            reaction = f"🔴 Risk-Off\n{market}"
-
-        # ➡️ NEUTRAL
         else:
-            analysis = "➡️ Wie erwartet"
-            meaning = "Keine Überraschung → Markt bleibt stabil"
-            reaction = "⚖️ Neutral\nKaum Bewegung"
-
-        return analysis, meaning, reaction
+            return "➡️ Wie erwartet", "⚖️ Neutral"
 
     except:
-        return (
-            "Keine Daten",
-            "Daten konnten nicht ausgewertet werden",
-            "Keine klare Marktreaktion"
-        )
+        return "Keine Daten", "Keine klare Reaktion"
 
 # =========================
-# 📡 EVENTS LADEN
+# 📡 EVENTS LADEN (WIE FRÜHER + CACHE)
 # =========================
 def get_events():
     global cache
@@ -91,6 +53,11 @@ def get_events():
 
     try:
         r = requests.get(url, timeout=10)
+
+        if not r.content:
+            print("❌ Kein XML → Cache", flush=True)
+            return cache
+
         root = ET.fromstring(r.content)
 
         events = []
@@ -112,60 +79,59 @@ def get_events():
             })
 
         cache = events
-        print(f"✅ {len(events)} Events geladen")
+        print(f"✅ {len(events)} Events geladen", flush=True)
         return events
 
     except Exception as e:
-        print(f"❌ XML Fehler → Cache genutzt: {e}")
+        print(f"❌ XML Fehler → Cache: {e}", flush=True)
         return cache
 
 # =========================
-# 🔁 LOOP
+# 🔁 LOOP (WIE VORHER)
 # =========================
 async def news_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
 
-    print("🚀 Bot läuft...")
+    print("🚀 Bot läuft", flush=True)
 
     while True:
-        try:
-            now = datetime.now() + timedelta(hours=2)
-            events = get_events()
+        now = datetime.now() + timedelta(hours=2)
+        events = get_events()
 
-            for e in events:
-                try:
-                    event_time = parser.parse(f"{e['date']} {e['time']}") + timedelta(hours=2)
-                except:
-                    continue
+        for e in events:
+            try:
+                event_time = parser.parse(f"{e['date']} {e['time']}") + timedelta(hours=2)
+            except:
+                continue
 
-                diff = (event_time - now).total_seconds()
-                key = f"{e['title']}_{e['date']}_{e['time']}"
+            diff = (event_time - now).total_seconds()
+            key = f"{e['title']}_{e['date']}_{e['time']}"
 
-                # 🔔 1H ALERT
-                if 3500 < diff < 3700 and key not in alerted_events:
+            # 🔔 1H ALARM
+            if 3500 < diff < 3700 and key not in alerted_events:
 
-                    tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
+                tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
 
-                    msg = f"""{tag}
+                msg = f"""{tag}
 
-🔔 Heute wichtige News
+🔔 Heute News
 
 📊 {e['country']} - {e['title']}
 ⏰ {e['time']}
 """
 
-                    await channel.send(msg)
-                    alerted_events.add(key)
+                await channel.send(msg)
+                alerted_events.add(key)
 
-                # 📊 LIVE EVENT
-                if 0 < diff < 120 and key not in sent_events:
+            # 📊 LIVE EVENT
+            if 0 < diff < 120 and key not in sent_events:
 
-                    tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
+                tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
 
-                    analysis, meaning, reaction = analyze(e["actual"], e["forecast"])
+                analysis, reaction = analyze(e["actual"], e["forecast"])
 
-                    msg = f"""{tag}
+                msg = f"""{tag}
 
 📊 {e['country']} - {e['title']}
 
@@ -177,20 +143,14 @@ async def news_loop():
 {analysis}
 
 💡 Bedeutung:
-{meaning}
-
-🌍 Marktreaktion:
 {reaction}
 
-💱 Betroffene Märkte:
+💱 Märkte:
 {get_markets()}
 """
 
-                    await channel.send(msg)
-                    sent_events.add(key)
-
-        except Exception as e:
-            print(f"❌ Loop Fehler: {e}")
+                await channel.send(msg)
+                sent_events.add(key)
 
         await asyncio.sleep(60)
 
@@ -204,11 +164,11 @@ async def on_message(message):
 
     if message.content.lower() == "@forex bot erstelle fake news":
 
-        analysis, meaning, reaction = analyze("250K", "180K")
+        analysis, reaction = analyze("250K", "180K")
 
         msg = f"""@HIGH IMPACT
 
-📊 USD - Fake News Event
+📊 USD - Fake Event
 
 📈 Actual: 250K
 📊 Forecast: 180K
@@ -218,12 +178,9 @@ async def on_message(message):
 {analysis}
 
 💡 Bedeutung:
-{meaning}
-
-🌍 Marktreaktion:
 {reaction}
 
-💱 Betroffene Märkte:
+💱 Märkte:
 {get_markets()}
 """
 
@@ -234,7 +191,7 @@ async def on_message(message):
 # =========================
 @client.event
 async def on_ready():
-    print(f"🤖 Eingeloggt als {client.user}")
+    print(f"🤖 Eingeloggt als {client.user}", flush=True)
     client.loop.create_task(news_loop())
 
 client.run(TOKEN)
