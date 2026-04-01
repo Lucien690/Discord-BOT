@@ -116,7 +116,7 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
-                # ✅ TAG SYSTEM
+                # TAGS
                 if impact in ["high", "3"]:
                     mention = "@HIGH IMPACT"
                     color = 0xff0000
@@ -127,7 +127,7 @@ async def news_loop():
                     mention = "@LOW IMPACT"
                     color = 0x00ff00
 
-                # 🔔 1H ALERT
+                # 🔔 1H
                 if 3500 < diff < 3700 and key not in pre_alerts_1h:
                     embed = discord.Embed(
                         title=f"🔔 {country} - {title}",
@@ -137,7 +137,7 @@ async def news_loop():
                     await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
 
-                # ⏳ 30M ALERT
+                # ⏳ 30M
                 if 1700 < diff < 1900 and key not in pre_alerts_30m:
                     embed = discord.Embed(
                         title=f"⏳ {country} - {title}",
@@ -147,7 +147,7 @@ async def news_loop():
                     await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
 
-                # 📊 LIVE EVENT
+                # 📊 LIVE
                 if 0 < diff < 120 and key not in sent_events:
 
                     analysis = ""
@@ -199,6 +199,45 @@ async def news_loop():
             print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
+
+# ✅ NEUER TEST COMMAND
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if client.user.mentioned_in(message) and "erstelle fake news" in message.content.lower():
+
+        country = "USD"
+        title = "Fake Event"
+
+        actual = "250K"
+        forecast = "180K"
+        previous = "170K"
+
+        mention = "@HIGH IMPACT"
+
+        analysis = f"Die Daten ({actual}) liegen über der Erwartung ({forecast}). Die Wirtschaft ist stärker als erwartet."
+        meaning = "→ Unternehmen wachsen\n→ Konsum steigt\n→ Vertrauen steigt"
+        reaction = "📈 NAS100 & US30 steigen\n🛢️ Öl steigt\n₿ BTC steigt\n🟡 Gold fällt"
+
+        embed = discord.Embed(
+            title=f"📊 {country} - {title}",
+            description="Event läuft jetzt!",
+            color=0xff0000
+        )
+
+        embed.add_field(name="📈 Actual", value=actual, inline=True)
+        embed.add_field(name="📊 Forecast", value=forecast, inline=True)
+        embed.add_field(name="📉 Previous", value=previous, inline=True)
+
+        embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
+        embed.add_field(name="💡 Bedeutung", value=meaning, inline=False)
+        embed.add_field(name="🌍 Marktreaktion", value=reaction, inline=False)
+
+        embed.add_field(name="💱 Märkte", value=get_pairs(country, title), inline=False)
+
+        await message.channel.send(content=mention, embed=embed)
 
 @client.event
 async def on_ready():
