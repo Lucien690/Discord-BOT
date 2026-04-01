@@ -1,4 +1,4 @@
-import discord
+ import discord
 import asyncio
 import requests
 import xml.etree.ElementTree as ET
@@ -45,69 +45,59 @@ def get_pairs(country, title=""):
 
     return ", ".join(pairs)
 
+# 🔥 NUR DAS GEÄNDERT (XML + Cache)
 def get_events():
     global last_events
 
+    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+
     try:
-        # ✅ NUR DAS GEÄNDERT
-        url = "https://www.forexfactory.com/calendar?day=today"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Referer": "https://www.forexfactory.com/"
-        }
+        response = requests.get(url, timeout=10)
 
-        html = requests.get(url, headers=headers, timeout=10).text
+        if not response.content or b"<" not in response.content:
+            print("❌ Kein gültiges XML → nutze Cache", flush=True)
+            return last_events
 
-        soup = BeautifulSoup(html, "html.parser")
-        rows = soup.find_all("tr", class_="calendar__row")
+        try:
+            root = ET.fromstring(response.content)
+        except ET.ParseError as e:
+            print(f"❌ XML kaputt → nutze Cache: {e}", flush=True)
+            return last_events
 
         events = []
-        current_date = datetime.now().strftime("%Y-%m-%d")
 
-        for row in rows:
-            try:
-                time_ = row.find("td", class_="calendar__time").text.strip()
-                currency = row.find("td", class_="calendar__currency").text.strip()
-                title = row.find("td", class_="calendar__event").text.strip()
+        for event in root.findall("event"):
+            title = event.findtext("title", default="N/A")
+            country = event.findtext("country", default="N/A")
+            date = event.findtext("date", default="")
+            time_ = event.findtext("time", default="")
+            impact = event.findtext("impact", default="low").lower()
 
-                impact = "low"
-                impact_span = row.find("span", class_="impact")
-                if impact_span:
-                    classes = impact_span.get("class", [])
-                    if "high" in classes:
-                        impact = "high"
-                    elif "medium" in classes:
-                        impact = "medium"
+            actual = event.findtext("actual", default="N/A")
+            forecast = event.findtext("forecast", default="N/A")
+            previous = event.findtext("previous", default="N/A")
 
-                actual = row.find("td", class_="calendar__actual").text.strip()
-                forecast = row.find("td", class_="calendar__forecast").text.strip()
-                previous = row.find("td", class_="calendar__previous").text.strip()
-
-                if not time_ or time_.lower() in ["all day", "tentative"]:
-                    continue
-
-                events.append({
-                    "title": title,
-                    "country": currency,
-                    "date": current_date,
-                    "time": time_,
-                    "impact": impact,
-                    "actual": actual if actual else "N/A",
-                    "forecast": forecast if forecast else "N/A",
-                    "previous": previous if previous else "N/A"
-                })
-
-            except:
+            if impact not in ["high", "3", "medium", "low", "1"]:
                 continue
 
-        print(f"✅ {len(events)} Events (Scraping)", flush=True)
+            events.append({
+                "title": title,
+                "country": country,
+                "date": date,
+                "time": time_,
+                "impact": impact,
+                "actual": actual,
+                "forecast": forecast,
+                "previous": previous
+            })
+
+        print(f"✅ {len(events)} Events geladen (XML)", flush=True)
 
         last_events = events
         return events
 
     except Exception as e:
-        print(f"❌ Scraping Fehler → nutze Cache: {e}", flush=True)
+        print(f"❌ Fehler beim Laden → nutze Cache: {e}", flush=True)
         return last_events
 
 async def news_loop():
