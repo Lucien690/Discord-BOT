@@ -2,101 +2,129 @@ import discord
 import asyncio
 import requests
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
+import sys
+
+# 🔥 sorgt für sofortige Logs
+sys.stdout.reconfigure(line_buffering=True)
 
 print("🚀 SCRIPT STARTET", flush=True)
 
 # 🔐 ENV
 TOKEN = os.getenv("TOKEN")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-channel_id_env = os.getenv("CHANNEL_ID")
-
-if channel_id_env is None:
-    print("❌ CHANNEL_ID fehlt!", flush=True)
-    CHANNEL_ID = None
-else:
-    CHANNEL_ID = int(channel_id_env)
-    print(f"✅ CHANNEL_ID geladen: {CHANNEL_ID}", flush=True)
-
+# Discord Setup
 intents = discord.Intents.default()
-intents.message_content = True
-
 client = discord.Client(intents=intents)
 
+# 🔁 Speicher
+sent_events = set()
+pre_alerts = set()
 
-# 🔧 NUR HIER WURDE ETWAS GEÄNDERT (XML FIX)
+# 🔥 EVENTS LADEN
 def get_events():
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
         response = requests.get(url, timeout=10)
 
-        if response.status_code != 200:
-            print("❌ Fehler beim Laden der Daten", flush=True)
+        if not response.content or b"<" not in response.content:
+            print("❌ Kein gültiges XML erhalten", flush=True)
             return []
 
         try:
             root = ET.fromstring(response.content)
         except ET.ParseError as e:
-            print(f"❌ XML kaputt → retry später: {e}", flush=True)
-            return None  # ← WICHTIG
+            print(f"❌ XML kaputt → skip: {e}", flush=True)
+            return []
 
         events = []
 
         for event in root.findall("event"):
-            title = event.findtext("title")
-            impact = event.findtext("impact")
-            date = event.findtext("date")
-            time_ = event.findtext("time")
+            title = event.findtext("title", default="N/A")
+            country = event.findtext("country", default="N/A")
+            date = event.findtext("date", default="")
+            time_ = event.findtext("time", default="")
 
-            if impact not in ["High", "Medium"]:
+            # 🔥 DEINE ÄNDERUNG (High + Flash)
+            impact = event.findtext("impact", default="low").lower()
+            if impact not in ["high", "3", "medium"]:
                 continue
 
             events.append({
                 "title": title,
-                "impact": impact,
+                "country": country,
                 "date": date,
-                "time": time_
+                "time": time_,
+                "impact": impact
             })
 
         print(f"✅ {len(events)} Events geladen", flush=True)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler: {e}", flush=True)
+        print(f"❌ Fehler beim Laden: {e}", flush=True)
         return []
 
-
-@client.event
-async def on_ready():
-    print(f"🤖 Eingeloggt als {client.user}", flush=True)
-    print("🟢 Bot ist ready → starte Loop", flush=True)
-    client.loop.create_task(news_loop())
-
-
+# 🔁 LOOP
 async def news_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
 
+    print("🟢 Bot ist ready → starte Loop", flush=True)
+
     while not client.is_closed():
-        now = datetime.utcnow() + timedelta(hours=2)
-        print(f"⏰ Check um {now}", flush=True)
+        try:
+            now = datetime.now(timezone.utc) + timedelta(hours=2)
+            print(f"⏰ Check um {now}", flush=True)
 
-        events = get_events()
+            events = get_events()
 
-        # 🔧 NUR DAS HIER IST NEU
-        if events is None:
-            print("⏳ XML war kaputt → neuer Versuch in 30 Sekunden", flush=True)
-            await asyncio.sleep(30)
-            continue
+            for event in events:
+                title = event["title"]
+                country = event["country"]
+                date = event["date"]
+                time_ = event["time"]
 
-        print(f"📊 {len(events)} Events geladen", flush=True)
+                if time_ == "All Day" or time_ == "":
+                    continue
 
-        for event in events:
-            print(f"📊 EVENT: {event['title']} |", flush=True)
+                try:
+                    event_time = datetime.strptime(
+                        f"{date} {time_}", "%Y-%m-%d %H:%M"
+                    )
+                except:
+                    continue
+
+                key = f"{title}_{date}_{time_}"
+
+                # 🔔 1h vorher
+                if 0 < (event_time - now).total_seconds() <= 3600:
+                    if key not in pre_alerts:
+                        msg = f"🔔 **In 1 Stunde:** {country} - {title} ({time_})"
+                        await channel.send(msg)
+                        print(f"🔔 Pre-Alert gesendet: {title}", flush=True)
+                        pre_alerts.add(key)
+
+                # 📤 beim Event
+                if 0 < (event_time - now).total_seconds() <= 60:
+                    if key not in sent_events:
+                        msg = f"📊 **JETZT:** {country} - {title} ({time_})"
+                        await channel.send(msg)
+                        print(f"📤 Event gesendet: {title}", flush=True)
+                        sent_events.add(key)
+
+        except Exception as e:
+            print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
 
+# 🚀 START
+@client.event
+async def on_ready():
+    print(f"🤖 Eingeloggt als {client.user}", flush=True)
+    client.loop.create_task(news_loop())
 
 client.run(TOKEN)
