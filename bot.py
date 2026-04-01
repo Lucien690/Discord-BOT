@@ -25,7 +25,7 @@ sent_events = set()
 pre_alerts_1h = set()
 pre_alerts_30m = set()
 
-# 🔥 NEU (CACHE)
+# 🔥 CACHE
 last_events = []
 
 # 🔥 EVENTS LADEN
@@ -37,13 +37,13 @@ def get_events():
 
         if not response.content or b"<" not in response.content:
             print("❌ Kein gültiges XML", flush=True)
-            return None  # 🔥 geändert
+            return None
 
         try:
             root = ET.fromstring(response.content)
         except ET.ParseError as e:
             print(f"❌ XML kaputt → skip: {e}", flush=True)
-            return None  # 🔥 geändert
+            return None
 
         events = []
 
@@ -74,14 +74,15 @@ def get_events():
 
         print(f"✅ {len(events)} Events geladen", flush=True)
 
-        global last_events  # 🔥 NEU
-        last_events = events  # 🔥 NEU
+        global last_events
+        if len(events) > 0:
+            last_events = events
 
         return events
 
     except Exception as e:
         print(f"❌ Fehler beim Laden: {e}", flush=True)
-        return None  # 🔥 geändert
+        return None
 
 # 🔁 LOOP
 async def news_loop():
@@ -102,7 +103,6 @@ async def news_loop():
 
             events = get_events()
 
-            # 🔥 NEU (CACHE FALLBACK)
             if events is None:
                 print("⚠️ Nutze alte Events (Cache)", flush=True)
                 events = last_events
@@ -119,7 +119,7 @@ async def news_loop():
                 try:
                     event_time = datetime.strptime(
                         f"{date} {time_}", "%Y-%m-%d %H:%M"
-                    )
+                    ).replace(tzinfo=timezone.utc) + timedelta(hours=2)  # 🔥 NUR DIESE ZEILE GEÄNDERT
                 except:
                     continue
 
@@ -167,7 +167,7 @@ async def news_loop():
                         pre_alerts_30m.add(key)
 
                 # 📊 Event
-                if 0 < time_diff <= 300:
+                if -60 <= time_diff <= 600:
                     if key not in sent_events:
 
                         analysis = "Neutral"
