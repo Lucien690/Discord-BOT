@@ -113,7 +113,7 @@ async def news_loop():
                 color = 0xff0000 if impact in ["high", "3"] else 0xffcc00
 
                 # 📣 Rolle für High Impact
-                mention = "@HIGH IMPACT" if impact in ["high", "3"] else ""
+                mention = "@HIGH IMPACT" if impact in ["high", "3"] else None
 
                 # 🔔 1h vorher
                 if 0 < diff <= 3900:
@@ -170,7 +170,7 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# 🤖 TEST
+# 🤖 TEST COMMAND
 @client.event
 async def on_message(message):
     if message.author == client.user:
