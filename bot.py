@@ -260,4 +260,26 @@ Die Daten liegen **{'über' if is_better else 'unter'}** den Erwartungen ({'+' i
                     print(f"🚀 LIVE gesendet: {title} um {event_time_berlin.strftime('%H:%M')} MEZ", flush=True)
 
         except Exception as e:
-            print(f
+            print(f"❌ Loop-Fehler: {e}", flush=True)
+
+        await asyncio.sleep(60)
+
+
+# on_ready, on_message (Fake News) und der Rest bleiben gleich wie in der letzten Version
+
+@client.event
+async def on_ready():
+    global loop_started
+    print(f"🤖 Eingeloggt als {client.user}", flush=True)
+    if not loop_started:
+        client.loop.create_task(news_loop())
+        loop_started = True
+
+
+# Fake-News-Befehl kannst du behalten oder anpassen
+
+if __name__ == "__main__":
+    if not TOKEN or CHANNEL_ID == 0:
+        print("❌ TOKEN oder CHANNEL_ID fehlt!", flush=True)
+        sys.exit(1)
+    client.run(TOKEN)
