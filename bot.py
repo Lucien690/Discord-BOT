@@ -4,79 +4,120 @@ import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 import os
-import sys
 from dateutil import parser
-
-sys.stdout.reconfigure(line_buffering=True)
-print("🚀 SCRIPT STARTET", flush=True)
 
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
 intents = discord.Intents.default()
-intents.message_content = True
 client = discord.Client(intents=intents)
 
 sent_events = set()
-pre_alerts_1h = set()
-pre_alerts_30m = set()
-last_events = []
-loop_started = False
+alerted_events = set()
+cache = []
 
 # =========================
-# 📊 MARKETS
+# 📊 MÄRKTE
 # =========================
-def get_pairs(country, title=""):
-    pairs_map = {
-        "USD": ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "USOIL", "US30", "NAS100"],
-        "EUR": ["EUR/USD", "EUR/JPY", "EUR/GBP"],
-        "GBP": ["GBP/USD", "GBP/JPY", "EUR/GBP"],
-        "JPY": ["USD/JPY", "EUR/JPY", "GBP/JPY"],
-    }
-
-    pairs = pairs_map.get(country, [f"{country} Pairs"])
-
-    if any(word in title.lower() for word in ["crypto", "btc", "bitcoin"]):
-        pairs.append("BTC")
-
-    return ", ".join(pairs)
+def get_markets():
+    return "NAS100, US30, XAUUSD, USOIL, BTC"
 
 # =========================
-# 📡 EVENTS
+# 🧠 ANALYSE (VERBESSERT)
+# =========================
+def analyze(actual, forecast):
+    try:
+        a = float(actual.replace("K","000").replace("%",""))
+        f = float(forecast.replace("K","000").replace("%",""))
+
+        diff = a - f
+        diff_percent = abs(diff) / f if f != 0 else 0
+
+        # 📈 POSITIV
+        if diff > 0:
+
+            if diff_percent > 0.2:
+                strength = "stark besser als erwartet"
+                market = "📈 Starke Bewegung nach oben wahrscheinlich"
+            elif diff_percent > 0.05:
+                strength = "spürbar besser als erwartet"
+                market = "📈 Märkte steigen moderat"
+            else:
+                strength = "leicht besser als erwartet"
+                market = "📈 Kleine Aufwärtsbewegung"
+
+            analysis = f"📈 {strength}"
+            meaning = "Die Wirtschaft zeigt Stärke → Investoren kaufen riskante Assets"
+            reaction = f"🟢 Risk-On\n{market}"
+
+        # 📉 NEGATIV
+        elif diff < 0:
+
+            if diff_percent > 0.2:
+                strength = "deutlich schlechter als erwartet"
+                market = "📉 Starke Abverkäufe möglich"
+            elif diff_percent > 0.05:
+                strength = "spürbar schlechter als erwartet"
+                market = "📉 Märkte fallen moderat"
+            else:
+                strength = "leicht schlechter als erwartet"
+                market = "📉 Kleine Abwärtsbewegung"
+
+            analysis = f"📉 {strength}"
+            meaning = "Die Wirtschaft schwächelt → Unsicherheit steigt"
+            reaction = f"🔴 Risk-Off\n{market}"
+
+        # ➡️ NEUTRAL
+        else:
+            analysis = "➡️ Wie erwartet"
+            meaning = "Keine Überraschung → Markt bleibt stabil"
+            reaction = "⚖️ Neutral\nKaum Bewegung"
+
+        return analysis, meaning, reaction
+
+    except:
+        return (
+            "Keine Daten",
+            "Daten konnten nicht ausgewertet werden",
+            "Keine klare Marktreaktion"
+        )
+
+# =========================
+# 📡 EVENTS LADEN
 # =========================
 def get_events():
-    global last_events
-
+    global cache
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
-        response = requests.get(url, timeout=10)
-
-        try:
-            root = ET.fromstring(response.content)
-        except:
-            print("❌ XML kaputt → Cache", flush=True)
-            return last_events
+        r = requests.get(url, timeout=10)
+        root = ET.fromstring(r.content)
 
         events = []
+        for e in root.findall("event"):
+            impact = e.findtext("impact", "").lower()
 
-        for event in root.findall("event"):
+            if impact not in ["high", "medium", "3", "2"]:
+                continue
+
             events.append({
-                "title": event.findtext("title", "N/A"),
-                "country": event.findtext("country", "N/A"),
-                "date": event.findtext("date", ""),
-                "time": event.findtext("time", ""),
-                "impact": event.findtext("impact", "low").lower(),
-                "actual": event.findtext("actual", "N/A"),
-                "forecast": event.findtext("forecast", "N/A"),
-                "previous": event.findtext("previous", "N/A")
+                "title": e.findtext("title"),
+                "country": e.findtext("country"),
+                "date": e.findtext("date"),
+                "time": e.findtext("time"),
+                "impact": impact,
+                "actual": e.findtext("actual", "N/A"),
+                "forecast": e.findtext("forecast", "N/A"),
+                "previous": e.findtext("previous", "N/A"),
             })
 
-        last_events = events
+        cache = events
+        print(f"✅ {len(events)} Events geladen")
         return events
 
-    except:
-        return last_events
+    except Exception as e:
+        print(f"❌ XML Fehler → Cache genutzt: {e}")
+        return cache
 
 # =========================
 # 🔁 LOOP
@@ -85,130 +126,115 @@ async def news_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
 
-    while not client.is_closed():
-        now = datetime.now() + timedelta(hours=2)
-        events = get_events()
+    print("🚀 Bot läuft...")
 
-        for event in events:
-            try:
-                event_time = parser.parse(f"{event['date']} {event['time']}") + timedelta(hours=2)
-            except:
-                continue
+    while True:
+        try:
+            now = datetime.now() + timedelta(hours=2)
+            events = get_events()
 
-            diff = (event_time - now).total_seconds()
-            key = f"{event['title']}_{event['date']}_{event['time']}"
-
-            if 0 < diff <= 300 and key not in sent_events:
-
-                actual = event["actual"]
-                forecast = event["forecast"]
-
-                analysis = "Keine Daten"
-                risk = "⚖️ Neutral"
-                explanation = "➡️ Märkte seitwärts"
-
+            for e in events:
                 try:
-                    a = float(actual.replace("K", "000"))
-                    f = float(forecast.replace("K", "000"))
-
-                    diff_value = a - f
-                    diff_percent = abs(diff_value) / f if f != 0 else 0
-
-                    if diff_value > 0:
-                        strength = "leicht besser"
-                        if diff_percent > 0.2:
-                            strength = "deutlich stärker"
-                        elif diff_percent > 0.05:
-                            strength = "spürbar besser"
-
-                        analysis = f"📈 {strength} als erwartet → bullish"
-                        risk = "🟢 Risk-On"
-                        explanation = "📈 NAS100 ↑ | 🟡 Gold ↓ | 🛢️ Öl ↑ | ₿ BTC ↑"
-
-                    elif diff_value < 0:
-                        strength = "leicht schlechter"
-                        if diff_percent > 0.2:
-                            strength = "deutlich schlechter"
-                        elif diff_percent > 0.05:
-                            strength = "spürbar schlechter"
-
-                        analysis = f"📉 {strength} als erwartet → bearish"
-                        risk = "🔴 Risk-Off"
-                        explanation = "📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓"
-
+                    event_time = parser.parse(f"{e['date']} {e['time']}") + timedelta(hours=2)
                 except:
-                    pass
+                    continue
 
-                embed = discord.Embed(
-                    title=f"📊 {event['country']} - {event['title']}",
-                    description="Event läuft jetzt!",
-                    color=0xff0000
-                )
+                diff = (event_time - now).total_seconds()
+                key = f"{e['title']}_{e['date']}_{e['time']}"
 
-                embed.add_field(name="📈 Actual", value=actual)
-                embed.add_field(name="📊 Forecast", value=forecast)
-                embed.add_field(name="📉 Previous", value=event["previous"])
+                # 🔔 1H ALERT
+                if 3500 < diff < 3700 and key not in alerted_events:
 
-                embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
-                embed.add_field(name="🌍 Markt", value=f"{risk}\n{explanation}", inline=False)
-                embed.add_field(name="💱 Märkte", value=get_pairs(event["country"], event["title"]), inline=False)
+                    tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
 
-                await channel.send("@HIGH IMPACT", embed=embed)
-                sent_events.add(key)
+                    msg = f"""{tag}
+
+🔔 Heute wichtige News
+
+📊 {e['country']} - {e['title']}
+⏰ {e['time']}
+"""
+
+                    await channel.send(msg)
+                    alerted_events.add(key)
+
+                # 📊 LIVE EVENT
+                if 0 < diff < 120 and key not in sent_events:
+
+                    tag = "@HIGH IMPACT" if e["impact"] in ["high","3"] else "@IMPACT"
+
+                    analysis, meaning, reaction = analyze(e["actual"], e["forecast"])
+
+                    msg = f"""{tag}
+
+📊 {e['country']} - {e['title']}
+
+📈 Actual: {e['actual']}
+📊 Forecast: {e['forecast']}
+📉 Previous: {e['previous']}
+
+🧠 Analyse:
+{analysis}
+
+💡 Bedeutung:
+{meaning}
+
+🌍 Marktreaktion:
+{reaction}
+
+💱 Betroffene Märkte:
+{get_markets()}
+"""
+
+                    await channel.send(msg)
+                    sent_events.add(key)
+
+        except Exception as e:
+            print(f"❌ Loop Fehler: {e}")
 
         await asyncio.sleep(60)
 
 # =========================
-# 🧪 COMMANDS
+# 🧪 TEST COMMAND
 # =========================
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.lower() == "!force news":
+    if message.content.lower() == "@forex bot erstelle fake news":
 
-        country = "USD"
-        title = "Test Event"
+        analysis, meaning, reaction = analyze("250K", "180K")
 
-        actual = "250K"
-        forecast = "180K"
-        previous = "170K"
+        msg = f"""@HIGH IMPACT
 
-        # 🔔 1H
-        await message.channel.send("🔔 Event in 1 Stunde")
-        await asyncio.sleep(1)
+📊 USD - Fake News Event
 
-        # ⏳ 30M
-        await message.channel.send("⏳ Event in 30 Minuten")
-        await asyncio.sleep(1)
+📈 Actual: 250K
+📊 Forecast: 180K
+📉 Previous: 170K
 
-        # 📊 LIVE
-        embed = discord.Embed(
-            title=f"📊 {country} - {title}",
-            description="Event läuft jetzt!",
-            color=0xff0000
-        )
+🧠 Analyse:
+{analysis}
 
-        embed.add_field(name="📈 Actual", value=actual)
-        embed.add_field(name="📊 Forecast", value=forecast)
-        embed.add_field(name="📉 Previous", value=previous)
+💡 Bedeutung:
+{meaning}
 
-        embed.add_field(name="🧠 Analyse", value="📈 besser → bullish", inline=False)
-        embed.add_field(name="🌍 Markt", value="🟢 Risk-On\n📈 NAS100 ↑ | 🟡 Gold ↓", inline=False)
-        embed.add_field(name="💱 Märkte", value="EUR/USD, NAS100, GOLD", inline=False)
+🌍 Marktreaktion:
+{reaction}
 
-        await message.channel.send("@HIGH IMPACT", embed=embed)
+💱 Betroffene Märkte:
+{get_markets()}
+"""
+
+        await message.channel.send(msg)
 
 # =========================
 # 🚀 START
 # =========================
 @client.event
 async def on_ready():
-    global loop_started
-
-    if not loop_started:
-        client.loop.create_task(news_loop())
-        loop_started = True
+    print(f"🤖 Eingeloggt als {client.user}")
+    client.loop.create_task(news_loop())
 
 client.run(TOKEN)
