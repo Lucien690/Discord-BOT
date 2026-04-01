@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import sys
 from bs4 import BeautifulSoup
+from dateutil import parser  # ✅ NEU
 
 sys.stdout.reconfigure(line_buffering=True)
 print("🚀 SCRIPT STARTET", flush=True)
@@ -107,7 +108,6 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            # ✅ EINZIGE ÄNDERUNG
             now = datetime.now() + timedelta(hours=2)
 
             print(f"⏰ Check um {now}", flush=True)
@@ -129,9 +129,8 @@ async def news_loop():
                     continue
 
                 try:
-                    event_time = datetime.strptime(
-                        f"{date} {time_}", "%Y-%m-%d %H:%M"
-                    ) + timedelta(hours=2)
+                    # ✅ GEÄNDERT
+                    event_time = parser.parse(f"{date} {time_}") + timedelta(hours=2)
                 except:
                     continue
 
@@ -228,48 +227,6 @@ async def news_loop():
             print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
-
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
-
-    if "test" in message.content.lower():
-        await message.channel.send("✅ Bot funktioniert!")
-
-    if message.content.lower() == "!force news":
-        embed = discord.Embed(
-            title="🚨 USD - Test Event",
-            description="Manuell ausgelöst",
-            color=0xff0000
-        )
-
-        embed.add_field(name="⏰ Zeit", value="JETZT", inline=True)
-        embed.add_field(name="📊 Impact", value="HIGH", inline=True)
-
-        embed.add_field(name="📈 Actual", value="250K", inline=True)
-        embed.add_field(name="📊 Forecast", value="180K", inline=True)
-        embed.add_field(name="📉 Previous", value="170K", inline=True)
-
-        embed.add_field(
-            name="🧠 Analyse (Wichtig!)",
-            value="📈 Besser als erwartet → bullish",
-            inline=False
-        )
-
-        embed.add_field(
-            name="🌍 Marktstimmung",
-            value="🔴 Risk-Off\n📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓",
-            inline=False
-        )
-
-        embed.add_field(
-            name="💱 Betroffene Märkte",
-            value="⭐ EUR/USD, GBP/USD, USD/JPY\nXAU/USD, USOIL\nUS30, NAS100",
-            inline=False
-        )
-
-        await message.channel.send(content="@HIGH IMPACT", embed=embed)
 
 @client.event
 async def on_ready():
