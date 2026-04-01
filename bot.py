@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import sys
 from bs4 import BeautifulSoup
-from dateutil import parser  # ✅ NEU
+from dateutil import parser
 
 sys.stdout.reconfigure(line_buffering=True)
 print("🚀 SCRIPT STARTET", flush=True)
@@ -109,7 +109,6 @@ async def news_loop():
     while not client.is_closed():
         try:
             now = datetime.now() + timedelta(hours=2)
-
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -129,7 +128,6 @@ async def news_loop():
                     continue
 
                 try:
-                    # ✅ GEÄNDERT
                     event_time = parser.parse(f"{date} {time_}") + timedelta(hours=2)
                 except:
                     continue
@@ -138,7 +136,7 @@ async def news_loop():
                 diff = (event_time - now).total_seconds()
 
                 color = 0xff0000 if impact in ["high", "3"] else 0xffcc00
-                mention = "@HIGH IMPPACT" if impact in ["high", "3"] else None
+                mention = "@HIGH IMPACT" if impact in ["high", "3"] else None
 
                 if 0 < diff <= 3900:
                     if key not in pre_alerts_1h:
@@ -169,27 +167,58 @@ async def news_loop():
                 if 0 < diff <= 300:
                     if key not in sent_events:
 
-                        if impact in ["high", "3"]:
-                            risk = "🔴 Risk-Off"
-                            explanation = "📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓"
-                        elif impact == "medium":
-                            risk = "🟢 Risk-On"
-                            explanation = "📈 NAS100 ↑ | 🟡 Gold ↓ | 🛢️ Öl ↑ | ₿ BTC ↑"
-                        else:
-                            risk = "⚖️ Neutral"
-                            explanation = "➡️ NAS100 ↔ | 🟡 Gold ↔ | 🛢️ Öl ↔ | ₿ BTC ↔"
-
                         analysis = "Keine Daten"
+                        risk = "⚖️ Neutral"
+                        explanation = "➡️ Märkte seitwärts"
+
                         try:
                             a = float(actual.replace("%", "").replace("K", "000"))
                             f = float(forecast.replace("%", "").replace("K", "000"))
 
-                            if a > f:
-                                analysis = "📈 Besser als erwartet → bullish"
-                            elif a < f:
-                                analysis = "📉 Schlechter als erwartet → bearish"
+                            diff_value = a - f
+                            diff_percent = abs(diff_value) / f if f != 0 else 0
+
+                            if diff_value > 0:
+                                if diff_percent > 0.2:
+                                    strength = "deutlich stärker als erwartet"
+                                elif diff_percent > 0.05:
+                                    strength = "spürbar besser als erwartet"
+                                else:
+                                    strength = "leicht besser als erwartet"
+
+                                analysis = (
+                                    f"📈 {strength} → bullish\n\n"
+                                    f"💡 Erklärung:\n"
+                                    f"Die Daten liegen über der Erwartung → Wirtschaft wirkt stärker → Käufer dominieren den Markt"
+                                )
+
+                                risk = "🟢 Risk-On"
+                                explanation = "📈 NAS100 ↑ | 🟡 Gold ↓ | 🛢️ Öl ↑ | ₿ BTC ↑"
+
+                            elif diff_value < 0:
+                                if diff_percent > 0.2:
+                                    strength = "deutlich schlechter als erwartet"
+                                elif diff_percent > 0.05:
+                                    strength = "spürbar schlechter als erwartet"
+                                else:
+                                    strength = "leicht schlechter als erwartet"
+
+                                analysis = (
+                                    f"📉 {strength} → bearish\n\n"
+                                    f"💡 Erklärung:\n"
+                                    f"Die Daten liegen unter der Erwartung → Wirtschaft schwächelt → Verkäufer dominieren den Markt"
+                                )
+
+                                risk = "🔴 Risk-Off"
+                                explanation = "📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓"
+
                             else:
-                                analysis = "➡️ Wie erwartet → neutral"
+                                analysis = (
+                                    "➡️ Wie erwartet → neutral\n\n"
+                                    "💡 Erklärung:\n"
+                                    "Die Daten entsprechen der Erwartung → keine Überraschung → Markt reagiert kaum"
+                                )
+
                         except:
                             pass
 
@@ -227,6 +256,65 @@ async def news_loop():
             print(f"❌ Loop Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
+
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    if message.content.lower() == "!test":
+        await message.channel.send("✅ Bot funktioniert!")
+
+    # ✅ NUR DIESER TEIL GEÄNDERT
+    if message.content.lower() == "!force news":
+
+        country = "USD"
+        title = "Test Event"
+        time_ = "JETZT"
+        impact = "high"
+
+        actual = "250K"
+        forecast = "180K"
+        previous = "170K"
+
+        color = 0xff0000
+        mention = "@HIGH IMPACT"
+
+        embed_1h = discord.Embed(
+            title=f"🔔 {country} - {title}",
+            description="Event in 1 Stunde",
+            color=color
+        )
+        embed_1h.add_field(name="⏰ Zeit", value=time_, inline=True)
+        embed_1h.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
+        await message.channel.send(content=mention, embed=embed_1h)
+        await asyncio.sleep(2)
+
+        embed_30m = discord.Embed(
+            title=f"⏳ {country} - {title}",
+            description="Event in 30 Minuten",
+            color=color
+        )
+        embed_30m.add_field(name="⏰ Zeit", value=time_, inline=True)
+        embed_30m.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
+        await message.channel.send(content=mention, embed=embed_30m)
+        await asyncio.sleep(2)
+
+        embed_live = discord.Embed(
+            title=f"📊 {country} - {title}",
+            description="Event läuft jetzt!",
+            color=color
+        )
+
+        embed_live.add_field(name="⏰ Zeit", value=time_, inline=True)
+        embed_live.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+        embed_live.add_field(name="📈 Actual", value=actual, inline=True)
+        embed_live.add_field(name="📊 Forecast", value=forecast, inline=True)
+        embed_live.add_field(name="📉 Previous", value=previous, inline=True)
+
+        await message.channel.send(content=mention, embed=embed_live)
 
 @client.event
 async def on_ready():
