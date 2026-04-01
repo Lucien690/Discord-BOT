@@ -100,16 +100,16 @@ async def news_loop():
 
                 key = f"{title}_{date}_{time_}"
 
-                # 🔔 1h vorher
-                if 0 < (event_time - now).total_seconds() <= 3600:
+                # 🔔 1h vorher (JETZT MIT TOLERANZ)
+                if 0 < (event_time - now).total_seconds() <= 3900:
                     if key not in pre_alerts:
                         msg = f"🔔 **In 1 Stunde:** {country} - {title} ({time_})"
                         await channel.send(msg)
                         print(f"🔔 Pre-Alert gesendet: {title}", flush=True)
                         pre_alerts.add(key)
 
-                # 📤 beim Event
-                if 0 < (event_time - now).total_seconds() <= 60:
+                # 📤 beim Event (JETZT MIT 5 MIN FENSTER)
+                if 0 < (event_time - now).total_seconds() <= 300:
                     if key not in sent_events:
                         msg = f"📊 **JETZT:** {country} - {title} ({time_})"
                         await channel.send(msg)
