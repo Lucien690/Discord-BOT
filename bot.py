@@ -6,31 +6,46 @@ from datetime import datetime, timedelta, timezone
 import os
 import sys
 
-# 🔥 sofortige Logs
 sys.stdout.reconfigure(line_buffering=True)
-
 print("🚀 SCRIPT STARTET", flush=True)
 
-# 🔐 ENV
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-# Discord Setup
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# 🔁 Speicher
 sent_events = set()
 pre_alerts_1h = set()
 pre_alerts_30m = set()
 last_events = []
 loop_started = False
 
-# 🔥 EVENTS LADEN
+def get_pairs(country, title=""):
+    pairs_map = {
+        "USD": ["EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "USOIL", "US30", "NAS100"],
+        "EUR": ["EUR/USD", "EUR/JPY", "EUR/GBP"],
+        "GBP": ["GBP/USD", "GBP/JPY", "EUR/GBP"],
+        "JPY": ["USD/JPY", "EUR/JPY", "GBP/JPY"],
+        "CHF": ["USD/CHF", "EUR/CHF", "CHF/JPY"],
+        "NZD": ["NZD/USD", "AUD/NZD", "NZD/JPY"],
+        "AUD": ["AUD/USD", "AUD/JPY", "AUD/NZD"],
+        "CAD": ["USD/CAD", "CAD/JPY", "EUR/CAD", "USOIL"]
+    }
+
+    pairs = pairs_map.get(country, [f"{country} Pairs"])
+
+    title_lower = title.lower()
+    crypto_keywords = ["crypto", "bitcoin", "btc", "blockchain", "sec"]
+
+    if any(word in title_lower for word in crypto_keywords):
+        pairs.append("BTC")
+
+    return ", ".join(pairs)
+
 def get_events():
     global last_events
-
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
@@ -55,7 +70,8 @@ def get_events():
             time_ = event.findtext("time", default="")
             impact = event.findtext("impact", default="low").lower()
 
-            if impact not in ["high", "3", "medium"]:
+            # 🔥 GEÄNDERT: LOW EVENTS ERLAUBT
+            if impact not in ["high", "3", "medium", "low", "1"]:
                 continue
 
             events.append({
@@ -75,7 +91,6 @@ def get_events():
         print(f"❌ Fehler beim Laden → nutze Cache: {e}", flush=True)
         return last_events
 
-# 🔁 LOOP
 async def news_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
@@ -109,13 +124,9 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
-                # 🎨 Farben
                 color = 0xff0000 if impact in ["high", "3"] else 0xffcc00
-
-                # 📣 Rolle für High Impact
                 mention = "@HIGH IMPACT" if impact in ["high", "3"] else None
 
-                # 🔔 1h vorher
                 if 0 < diff <= 3900:
                     if key not in pre_alerts_1h:
                         embed = discord.Embed(
@@ -130,7 +141,6 @@ async def news_loop():
                         print(f"🔔 1h Alert: {title}", flush=True)
                         pre_alerts_1h.add(key)
 
-                # ⏳ 30min vorher
                 if 0 < diff <= 2100:
                     if key not in pre_alerts_30m:
                         embed = discord.Embed(
@@ -145,19 +155,37 @@ async def news_loop():
                         print(f"⏳ 30m Alert: {title}", flush=True)
                         pre_alerts_30m.add(key)
 
-                # 📤 beim Event
                 if 0 < diff <= 300:
                     if key not in sent_events:
+
+                        if impact in ["high", "3"]:
+                            risk = "🔴 Risk-Off"
+                            explanation = "📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓"
+                        elif impact == "medium":
+                            risk = "🟢 Risk-On"
+                            explanation = "📈 NAS100 ↑ | 🟡 Gold ↓ | 🛢️ Öl ↑ | ₿ BTC ↑"
+                        else:
+                            risk = "⚖️ Neutral"
+                            explanation = "➡️ NAS100 ↔ | 🟡 Gold ↔ | 🛢️ Öl ↔ | ₿ BTC ↔"
+
                         embed = discord.Embed(
                             title=f"📊 {country} - {title}",
                             description="Event läuft jetzt!",
                             color=color
                         )
+
                         embed.add_field(name="⏰ Zeit", value=time_, inline=True)
                         embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
+
                         embed.add_field(
-                            name="💱 Betroffene Paare",
-                            value=f"{country} Pairs",
+                            name="🌍 Marktstimmung",
+                            value=f"{risk}\n{explanation}",
+                            inline=False
+                        )
+
+                        embed.add_field(
+                            name="💱 Betroffene Märkte",
+                            value=get_pairs(country, title),
                             inline=False
                         )
 
@@ -170,7 +198,6 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# 🤖 TEST COMMAND
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -180,7 +207,6 @@ async def on_message(message):
         await message.channel.send("✅ Bot funktioniert!")
         print("💬 Test Antwort gesendet", flush=True)
 
-# 🚀 START
 @client.event
 async def on_ready():
     global loop_started
