@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import os
 import sys
+from bs4 import BeautifulSoup
 
 sys.stdout.reconfigure(line_buffering=True)
 print("🚀 SCRIPT STARTET", flush=True)
@@ -46,56 +47,60 @@ def get_pairs(country, title=""):
 
 def get_events():
     global last_events
-    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
-        response = requests.get(url, timeout=10)
+        url = "https://www.forexfactory.com/calendar"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        html = requests.get(url, headers=headers, timeout=10).text
 
-        if not response.content or b"<" not in response.content:
-            print("❌ Kein gültiges XML → nutze Cache", flush=True)
-            return last_events
-
-        try:
-            root = ET.fromstring(response.content)
-        except ET.ParseError as e:
-            print(f"❌ XML kaputt → nutze Cache: {e}", flush=True)
-            return last_events
+        soup = BeautifulSoup(html, "html.parser")
+        rows = soup.find_all("tr", class_="calendar__row")
 
         events = []
+        current_date = datetime.now().strftime("%Y-%m-%d")
 
-        for event in root.findall("event"):
-            title = event.findtext("title", default="N/A")
-            country = event.findtext("country", default="N/A")
-            date = event.findtext("date", default="")
-            time_ = event.findtext("time", default="")
-            impact = event.findtext("impact", default="low").lower()
+        for row in rows:
+            try:
+                time_ = row.find("td", class_="calendar__time").text.strip()
+                currency = row.find("td", class_="calendar__currency").text.strip()
+                title = row.find("td", class_="calendar__event").text.strip()
 
-            # 🔥 NEU
-            actual = event.findtext("actual", default="N/A")
-            forecast = event.findtext("forecast", default="N/A")
-            previous = event.findtext("previous", default="N/A")
+                impact = "low"
+                impact_span = row.find("span", class_="impact")
+                if impact_span:
+                    classes = impact_span.get("class", [])
+                    if "high" in classes:
+                        impact = "high"
+                    elif "medium" in classes:
+                        impact = "medium"
 
-            if impact not in ["high", "3", "medium", "low", "1"]:
+                actual = row.find("td", class_="calendar__actual").text.strip()
+                forecast = row.find("td", class_="calendar__forecast").text.strip()
+                previous = row.find("td", class_="calendar__previous").text.strip()
+
+                if not time_ or time_.lower() in ["all day", "tentative"]:
+                    continue
+
+                events.append({
+                    "title": title,
+                    "country": currency,
+                    "date": current_date,
+                    "time": time_,
+                    "impact": impact,
+                    "actual": actual if actual else "N/A",
+                    "forecast": forecast if forecast else "N/A",
+                    "previous": previous if previous else "N/A"
+                })
+
+            except:
                 continue
 
-            events.append({
-                "title": title,
-                "country": country,
-                "date": date,
-                "time": time_,
-                "impact": impact,
-                "actual": actual,
-                "forecast": forecast,
-                "previous": previous
-            })
-
-        print(f"✅ {len(events)} Events geladen", flush=True)
-
+        print(f"✅ {len(events)} Events (Scraping)", flush=True)
         last_events = events
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Laden → nutze Cache: {e}", flush=True)
+        print(f"❌ Scraping Fehler → nutze Cache: {e}", flush=True)
         return last_events
 
 async def news_loop():
@@ -106,7 +111,8 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            now = datetime.now(timezone.utc) + timedelta(hours=2)
+            # ✅ FIX: lokale Zeit
+            now = datetime.now()
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -118,7 +124,6 @@ async def news_loop():
                 time_ = event["time"]
                 impact = event["impact"]
 
-                # 🔥 NEU
                 actual = event["actual"]
                 forecast = event["forecast"]
                 previous = event["previous"]
@@ -127,9 +132,10 @@ async def news_loop():
                     continue
 
                 try:
+                    # ✅ FIX: keine Zeitzone mehr
                     event_time = datetime.strptime(
                         f"{date} {time_}", "%Y-%m-%d %H:%M"
-                    ).replace(tzinfo=timezone.utc)
+                    )
                 except:
                     continue
 
@@ -180,7 +186,6 @@ async def news_loop():
                             risk = "⚖️ Neutral"
                             explanation = "➡️ NAS100 ↔ | 🟡 Gold ↔ | 🛢️ Öl ↔ | ₿ BTC ↔"
 
-                        # 🔥 NEU: einfache Analyse
                         analysis = "Keine Daten"
                         try:
                             a = float(actual.replace("%", "").replace("K", "000"))
@@ -204,12 +209,10 @@ async def news_loop():
                         embed.add_field(name="⏰ Zeit", value=time_, inline=True)
                         embed.add_field(name="📊 Impact", value=impact.upper(), inline=True)
 
-                        # 🔥 NEU: Werte anzeigen
                         embed.add_field(name="📈 Actual", value=actual, inline=True)
                         embed.add_field(name="📊 Forecast", value=forecast, inline=True)
                         embed.add_field(name="📉 Previous", value=previous, inline=True)
 
-                        # 🔥 NEU: Analyse
                         embed.add_field(name="🧠 Analyse", value=analysis, inline=False)
 
                         embed.add_field(
@@ -241,6 +244,41 @@ async def on_message(message):
     if "test" in message.content.lower():
         await message.channel.send("✅ Bot funktioniert!")
         print("💬 Test Antwort gesendet", flush=True)
+
+    if message.content.lower() == "!force news":
+        embed = discord.Embed(
+            title="📊 USD - Test Event",
+            description="Manuell ausgelöst",
+            color=0xff0000
+        )
+
+        embed.add_field(name="⏰ Zeit", value="JETZT", inline=True)
+        embed.add_field(name="📊 Impact", value="HIGH", inline=True)
+
+        embed.add_field(name="📈 Actual", value="250K", inline=True)
+        embed.add_field(name="📊 Forecast", value="180K", inline=True)
+        embed.add_field(name="📉 Previous", value="170K", inline=True)
+
+        embed.add_field(
+            name="🧠 Analyse",
+            value="📈 Besser als erwartet → bullish",
+            inline=False
+        )
+
+        embed.add_field(
+            name="🌍 Marktstimmung",
+            value="🔴 Risk-Off\n📉 NAS100 ↓ | 🟡 Gold ↑ | 🛢️ Öl ↓ | ₿ BTC ↓",
+            inline=False
+        )
+
+        embed.add_field(
+            name="💱 Betroffene Märkte",
+            value="EUR/USD, GBP/USD, USD/JPY, XAU/USD, USOIL, US30, NAS100",
+            inline=False
+        )
+
+        await message.channel.send(content="@HIGH IMPACT", embed=embed)
+        print("🧪 Test News gesendet", flush=True)
 
 @client.event
 async def on_ready():
