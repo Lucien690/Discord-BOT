@@ -107,7 +107,9 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            now = datetime.now()
+            # ✅ EINZIGE ÄNDERUNG
+            now = datetime.now() + timedelta(hours=2)
+
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -235,7 +237,6 @@ async def on_message(message):
     if "test" in message.content.lower():
         await message.channel.send("✅ Bot funktioniert!")
 
-    # ✅ NUR DIESER TEIL GEÄNDERT
     if message.content.lower() == "!force news":
         embed = discord.Embed(
             title="🚨 USD - Test Event",
