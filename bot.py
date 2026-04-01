@@ -92,8 +92,9 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            now = datetime.now(timezone.utc) + timedelta(hours=2)
+            now = datetime.now(timezone.utc)
             print(f"⏰ Check um {now}", flush=True)
+            
 
             channel = client.get_channel(CHANNEL_ID)
             if channel is None:
