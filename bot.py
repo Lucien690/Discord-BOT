@@ -125,7 +125,6 @@ async def news_loop():
                     mention = "@LOW IMPACT"
                     color = 0x00ff00
 
-                # 🔔 1H
                 if 3500 < diff < 3700 and key not in pre_alerts_1h:
                     embed = discord.Embed(
                         title=f"🔔 {country} - {title}",
@@ -135,7 +134,6 @@ async def news_loop():
                     await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
 
-                # ⏳ 30M
                 if 1700 < diff < 1900 and key not in pre_alerts_30m:
                     embed = discord.Embed(
                         title=f"⏳ {country} - {title}",
@@ -145,19 +143,18 @@ async def news_loop():
                     await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
 
-                # 📊 LIVE
+                # ✅ LIVE EVENT (FIXED)
                 if 0 < diff < 120 and key not in sent_events:
-
-                    analysis_text = ""
 
                     try:
                         a = float(actual.replace("K","000").replace("%",""))
                         f = float(forecast.replace("K","000").replace("%",""))
                         diff_val = int(a - f)
+                    except:
+                        diff_val = 0
 
-                        if a > f:
-
-                            reaction_block = """
+                    if a > f:
+                        reaction_block = """
 🌍 Marktauswirkungen:
 
 📈 NAS100 ↑
@@ -166,8 +163,20 @@ async def news_loop():
 ₿ BTC ↑
 🟡 XAUUSD ↓
 """
+                        bias = "Bullish"
+                    else:
+                        reaction_block = """
+🌍 Marktauswirkungen:
 
-                            analysis_text = f"""📊 {country} | High Impact Event
+📉 NAS100 ↓
+📉 US30 ↓
+🛢️ USOIL ↓
+₿ BTC ↓
+🟡 XAUUSD ↑
+"""
+                        bias = "Bearish"
+
+                    analysis_text = f"""📊 {country} | High Impact Event
 
 🕒 Status: LIVE
 
@@ -178,62 +187,16 @@ async def news_loop():
 ━━━━━━━━━━━━━━━━━━━
 🧠 Analyse:
 Die Daten liegen über den Erwartungen (+{diff_val}).
-Die Wirtschaft ist stärker als erwartet.
-
-📌 Interpretation:
-• Wachstum steigt
-• Vertrauen steigt
-• USD wird stärker
 
 ━━━━━━━━━━━━━━━━━━━
 {reaction_block}
 
 ━━━━━━━━━━━━━━━━━━━
 💡 Trading Bias:
-➡️ Indizes: Bullish
-➡️ Gold: Bearish
-➡️ BTC: Bullish
-
-━━━━━━━━━━━━━━━━━━━
-⚠️ Hohe Volatilität möglich!
+➡️ Indizes: {bias}
+➡️ Gold: {"Bearish" if bias=="Bullish" else "Bullish"}
+➡️ BTC: {bias}
 """
-
-                        elif a < f:
-
-                            reaction_block = """
-🌍 Marktauswirkungen:
-
-📉 NAS100 ↓
-📉 US30 ↓
-🛢️ USOIL ↓
-₿ BTC ↓
-🟡 XAUUSD ↑
-"""
-
-                            analysis_text = f"""📊 {country} | High Impact Event
-
-🧠 Analyse:
-Die Daten liegen unter den Erwartungen ({diff_val}).
-Die Wirtschaft ist schwächer.
-
-━━━━━━━━━━━━━━━━━━━
-{reaction_block}
-
-━━━━━━━━━━━━━━━━━━━
-💡 Trading Bias:
-➡️ Indizes: Bearish
-➡️ Gold: Bullish
-➡️ BTC: Bearish
-
-━━━━━━━━━━━━━━━━━━━
-⚠️ Hohe Volatilität möglich!
-"""
-
-                        else:
-                            analysis_text = "Daten wie erwartet"
-
-                    except:
-                        analysis_text = "Keine Analyse möglich"
 
                     embed = discord.Embed(
                         title=f"📊 {country} - {title}",
@@ -241,6 +204,7 @@ Die Wirtschaft ist schwächer.
                         color=color
                     )
 
+                    # ✅ NUR NEUE ANALYSE
                     embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
 
                     embed.add_field(
@@ -264,10 +228,6 @@ async def on_message(message):
 
     if client.user.mentioned_in(message) and "erstelle fake news" in message.content.lower():
 
-        actual = "250K"
-        forecast = "180K"
-        previous = "170K"
-
         reaction_block = """
 🌍 Marktauswirkungen:
 
@@ -282,14 +242,13 @@ async def on_message(message):
 
 🕒 Status: LIVE
 
-📈 Actual: {actual}
-📊 Forecast: {forecast}
-📉 Previous: {previous}
+📈 Actual: 250K
+📊 Forecast: 180K
+📉 Previous: 170K
 
 ━━━━━━━━━━━━━━━━━━━
 🧠 Analyse:
 Die Daten liegen über den Erwartungen (+70K).
-Die Wirtschaft ist stärker als erwartet.
 
 ━━━━━━━━━━━━━━━━━━━
 {reaction_block}
