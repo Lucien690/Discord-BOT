@@ -68,7 +68,7 @@ def get_events():
 
         print(f"✅ {len(events)} Events geladen", flush=True)
 
-        last_events = events  # 🔥 Cache speichern
+        last_events = events
         return events
 
     except Exception as e:
@@ -84,7 +84,8 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            now = datetime.now(timezone.utc)
+            # 🔥 NUR DIESE ZEILE GEÄNDERT
+            now = datetime.now(timezone.utc) + timedelta(hours=2)
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
@@ -108,7 +109,7 @@ async def news_loop():
                 key = f"{title}_{date}_{time_}"
                 diff = (event_time - now).total_seconds()
 
-                # 🔔 1h vorher (mit Toleranz)
+                # 🔔 1h vorher
                 if 0 < diff <= 3900:
                     if key not in pre_alerts_1h:
                         msg = f"🔔 **In 1 Stunde:** {country} - {title} ({time_})"
@@ -124,14 +125,10 @@ async def news_loop():
                         print(f"⏳ 30m Alert: {title}", flush=True)
                         pre_alerts_30m.add(key)
 
-                # 📤 Event (5 min Fenster)
+                # 📤 beim Event
                 if 0 < diff <= 300:
                     if key not in sent_events:
-                        msg = (
-                            f"📊 **JETZT:** {country} - {title} ({time_})\n"
-                            f"📈 Hohe Volatilität erwartet\n"
-                            f"💱 Betroffene Paare: {country} Pairs"
-                        )
+                        msg = f"📊 **JETZT:** {country} - {title} ({time_})"
                         await channel.send(msg)
                         print(f"📤 Event gesendet: {title}", flush=True)
                         sent_events.add(key)
@@ -141,7 +138,7 @@ async def news_loop():
 
         await asyncio.sleep(60)
 
-# 🤖 TEST COMMAND
+# 🤖 TEST
 @client.event
 async def on_message(message):
     if message.author == client.user:
