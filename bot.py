@@ -27,7 +27,7 @@ pre_alerts_30m = set()
 last_events = []
 last_fetch_time = None
 loop_started = False
-message_ids_to_delete = {}  # {message_id: delete_time}
+message_ids_to_delete = {}
 
 berlin_tz = tz.gettz("Europe/Berlin")
 
@@ -99,13 +99,13 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events (alle Impact-Stufen) geladen", flush=True)
+        print(f"✅ {len(events)} Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Events: {e}", flush=True)
+        print(f"❌ Fehler beim Laden: {e}", flush=True)
         return last_events
 
 
@@ -167,7 +167,7 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 1-STUNDEN-VORWARNUNG ====================
+                # 1-Stunden-Vorwarnung
                 if 3500 < diff < 3700 and key not in pre_alerts_1h:
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
@@ -179,9 +179,8 @@ async def news_loop():
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-                    print(f"🔔 1H Alert gesendet: {title}", flush=True)
 
-                # ==================== 30-MINUTEN-VORWARNUNG ====================
+                # 30-Minuten-Vorwarnung
                 if 1700 < diff < 1900 and key not in pre_alerts_30m:
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
@@ -193,9 +192,8 @@ async def news_loop():
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-                    print(f"⏳ 30M Alert gesendet: {title}", flush=True)
 
-                # ==================== LIVE EVENT ====================
+                # ==================== LIVE EVENT mit Aktien-Emojis ====================
                 if 0 < diff < 180 and key not in sent_events:
                     is_better = False
                     diff_val = 0
@@ -209,39 +207,38 @@ async def news_loop():
                     except:
                         pass
 
-                    bias = "Bullish" if is_better else "Bearish"
-                    gold_bias = "Bearish" if bias == "Bullish" else "Bullish"
+                    arrow = "↑" if is_better else "↓"
+                    market_emoji = "📈" if is_better else "📉"
 
                     reaction_block = f"""
 🌍 **Marktreaktion erwartet:**
 
-📈 NAS100 {'↑' if is_better else '↓'}
-📈 US30 {'↑' if is_better else '↓'}
-🛢️ USOIL {'↑' if is_better else '↓'}
-₿ BTC {'↑' if is_better else '↓'}
-🟡 XAUUSD {'↓' if is_better else '↑'}
+{market_emoji} NAS100 {arrow}    {market_emoji} US30 {arrow}
+🛢️ USOIL {arrow}     ₿ BTC {arrow}
+🟡 XAUUSD {'↓' if is_better else '↑'}   (Gold {'fällt' if is_better else 'steigt'} meist)
 """
 
-                    analysis_text = f"""📊 **{country} | {title}**
+                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
-🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
+{ '✅' if is_better else '❌' } Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
 
-📈 Actual:   **{event['actual']}**
-📊 Forecast: **{event['forecast']}**
-📉 Previous: **{event['previous']}**
+🧠 Einfache Erklärung:
+Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal für die US-Wirtschaft.
+
+{market_emoji} Was das für den Markt bedeutet:
+{market_emoji} NAS100 {arrow}    {market_emoji} US30 {arrow}
+🛢️ USOIL {arrow}     ₿ BTC {arrow}
+🟡 XAUUSD {'↓' if is_better else '↑'}
+
+💡 Praktischer Tipp für Anfänger:
+Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
 
 ━━━━━━━━━━━━━━━━━━━
-🧠 **Analyse:**
-Die Daten liegen **{'über' if is_better else 'unter'}** den Erwartungen ({'+' if is_better else ''}{diff_val}).
-
-━━━━━━━━━━━━━━━━━━━
-{reaction_block.strip()}
-
-━━━━━━━━━━━━━━━━━━━
-💡 **Trading Bias:**
-➡️ Indizes: **{bias}**
-➡️ Gold: **{gold_bias}**
-➡️ BTC: **{bias}**
+📊 Technische Daten:
+Actual:     **{event['actual']}** {arrow}
+Forecast:   **{event['forecast']}**
+Previous:   **{event['previous']}**
+Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
 """
 
                     embed = discord.Embed(
@@ -257,12 +254,12 @@ Die Daten liegen **{'über' if is_better else 'unter'}** den Erwartungen ({'+' i
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    print(f"🚀 LIVE Event gesendet: {title} ({impact})", flush=True)
+                    print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(300)  # 5 Minuten
+        await asyncio.sleep(300)
 
 
 # ==================== FAKE NEWS TEST ====================
@@ -272,43 +269,14 @@ async def on_message(message):
         return
 
     content_lower = message.content.lower()
-
-    print(f"📨 Nachricht erhalten: {message.content}", flush=True)
-    print(f"🤖 Bot erwähnt? {client.user.mentioned_in(message)}", flush=True)
-
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
-
-        embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
-            description="**TEST – nur zur Überprüfung**",
+        # Hier kannst du später das volle Fake-Embed einfügen
+        await message.channel.send(content="@everyone", embed=discord.Embed(
+            title="🚨 HIGH IMPACT – Test Nachricht",
+            description="Die neue Version mit Aktien-Emojis und Pfeilen wird getestet.",
             color=0xff0000
-        )
-        embed.add_field(
-            name="📊 Marktanalyse",
-            value="""🕒 **Status:** LIVE
-
-📈 Actual:   **250K**
-📊 Forecast: **180K**
-📉 Previous: **170K**
-
-🧠 Die Daten liegen **deutlich über** den Erwartungen (+70K).
-
-━━━━━━━━━━━━━━━━━━━
-🌍 **Marktreaktion erwartet:**
-📈 NAS100 ↑   US30 ↑   USOIL ↑   ₿ BTC ↑   🟡 XAUUSD ↓
-
-━━━━━━━━━━━━━━━━━━━
-💡 **Trading Bias:**
-➡️ Indizes: **Bullish**  
-➡️ Gold: **Bearish**  
-➡️ BTC: **Bullish**""",
-            inline=False
-        )
-        embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
-
-        await message.channel.send(content=get_mention(), embed=embed)
-
+        ))
 
 @client.event
 async def on_ready():
@@ -321,6 +289,6 @@ async def on_ready():
 
 if __name__ == "__main__":
     if not TOKEN or CHANNEL_ID == 0:
-        print("❌ TOKEN oder CHANNEL_ID fehlt in .env!", flush=True)
+        print("❌ TOKEN oder CHANNEL_ID fehlt!", flush=True)
         sys.exit(1)
     client.run(TOKEN)
