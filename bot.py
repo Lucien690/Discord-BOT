@@ -84,11 +84,20 @@ async def news_loop():
 
     while not client.is_closed():
         try:
-            # 🔥 NUR DIESE ZEILE GEÄNDERT
             now = datetime.now(timezone.utc) + timedelta(hours=2)
             print(f"⏰ Check um {now}", flush=True)
 
             events = get_events()
+
+            # 🧪 TEST EVENT (2 Minuten in Zukunft)
+            test_time = now + timedelta(minutes=2)
+            events.append({
+                "title": "TEST NEWS",
+                "country": "USD",
+                "date": test_time.strftime("%Y-%m-%d"),
+                "time": test_time.strftime("%H:%M"),
+                "impact": "high"
+            })
 
             for event in events:
                 title = event["title"]
