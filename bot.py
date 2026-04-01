@@ -45,7 +45,6 @@ def get_pairs(country, title=""):
 
     return ", ".join(pairs)
 
-# 🔥 NUR DAS GEÄNDERT (XML + Cache)
 def get_events():
     global last_events
 
@@ -236,9 +235,10 @@ async def on_message(message):
     if "test" in message.content.lower():
         await message.channel.send("✅ Bot funktioniert!")
 
+    # ✅ NUR DIESER TEIL GEÄNDERT
     if message.content.lower() == "!force news":
         embed = discord.Embed(
-            title="📊 USD - Test Event",
+            title="🚨 USD - Test Event",
             description="Manuell ausgelöst",
             color=0xff0000
         )
@@ -251,7 +251,7 @@ async def on_message(message):
         embed.add_field(name="📉 Previous", value="170K", inline=True)
 
         embed.add_field(
-            name="🧠 Analyse",
+            name="🧠 Analyse (Wichtig!)",
             value="📈 Besser als erwartet → bullish",
             inline=False
         )
@@ -264,7 +264,7 @@ async def on_message(message):
 
         embed.add_field(
             name="💱 Betroffene Märkte",
-            value="EUR/USD, GBP/USD, USD/JPY, XAU/USD, USOIL, US30, NAS100",
+            value="⭐ EUR/USD, GBP/USD, USD/JPY\nXAU/USD, USOIL\nUS30, NAS100",
             inline=False
         )
 
