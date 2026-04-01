@@ -131,7 +131,7 @@ async def news_loop():
                 try:
                     event_time = datetime.strptime(
                         f"{date} {time_}", "%Y-%m-%d %H:%M"
-                    )
+                    ) + timedelta(hours=2)
                 except:
                     continue
 
