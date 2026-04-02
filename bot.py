@@ -24,7 +24,7 @@ client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
 sent_events = set()
-pre_alerts_1h = set()
+pre_alerts_90m = set()   # Neue 90-Minuten-Vorwarnung
 pre_alerts_30m = set()
 last_events = []
 last_fetch_time = None
@@ -199,20 +199,102 @@ async def news_loop():
                 color, impact_name = get_color_and_impact_name(impact)
 
                 if TEST_MODE:
-                    if 1800 < diff < 21600 and key not in pre_alerts_1h:
+                    # ==================== 90 MINUTEN VORHER ====================
+                    if 4800 < diff < 6600 and key not in pre_alerts_90m:   # ca. 80–110 Minuten vorher
                         minutes = int(diff / 60)
-                        print(f"🔔 Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
+                        print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
+
+                        pre_text = f"""⏰ 90 Minuten vorher
+
+@everyone
+
+🚨 HIGH IMPACT – {country} {title}
+
+🕒 Event in ca. 90 Minuten (um {event_time_berlin.strftime('%H:%M')} MEZ)
+
+⸻
+
+📊 Event Überblick:
+Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
+
+👉 Einer der wichtigsten kurzfristigen Indikatoren für die {country}-Wirtschaft
+
+⸻
+
+🧠 Was du erwarten kannst:
+	•	Hohe Volatilität rund um die Veröffentlichung
+	•	Schnelle Bewegungen in USD-Paaren & Indizes
+	•	Oft starke erste Reaktion + möglicher Richtungswechsel
+
+⸻
+
+💱 Wichtige Märkte im Fokus:
+{get_pairs(country, title)}
+
+⸻
+
+💡 Vorbereitung:
+✔️ Wichtige Levels markieren
+✔️ Kein impulsives Trading direkt beim Release
+✔️ Plan vor dem Event festlegen
+"""
+
                         embed = discord.Embed(
                             title=f"{impact_name} – {country} {title}",
-                            description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
+                            description="",
                             color=color,
                             timestamp=event_time_berlin
                         )
-                        embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
+                        embed.add_field(name="", value=pre_text, inline=False)
+
                         msg = await channel.send(content=mention, embed=embed)
-                        pre_alerts_1h.add(key)
+                        pre_alerts_90m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
+                    # ==================== 30 MINUTEN VORHER ====================
+                    if 1200 < diff < 2400 and key not in pre_alerts_30m:
+                        minutes = int(diff / 60)
+                        print(f"🔔 30m-VORWARNUNG gesendet: {title}", flush=True)
+
+                        pre_text = f"""⏰ 30 Minuten vorher
+
+@everyone
+
+🚨 HIGH IMPACT – {country} {title}
+
+🕒 Event in ca. 30 Minuten (um {event_time_berlin.strftime('%H:%M')} MEZ)
+
+⸻
+
+📊 Event Überblick:
+Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
+
+👉 Hohe Volatilität erwartet
+
+⸻
+
+💱 Wichtige Märkte im Fokus:
+{get_pairs(country, title)}
+
+⸻
+
+💡 Tipp:
+Bleib ruhig und halte deinen Plan ein.
+"""
+
+                        embed = discord.Embed(
+                            title=f"{impact_name} – {country} {title}",
+                            description="",
+                            color=color,
+                            timestamp=event_time_berlin
+                        )
+                        embed.add_field(name="", value=pre_text, inline=False)
+
+                        msg = await channel.send(content=mention, embed=embed)
+                        pre_alerts_30m.add(key)
+                        message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+
+                    # ==================== LIVE EVENT (unverändert) ====================
                     if -600 < diff < 1800 and key not in sent_events:
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -272,7 +354,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST ====================
+# ==================== FAKE NEWS TEST (unverändert) ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
