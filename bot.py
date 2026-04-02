@@ -24,7 +24,8 @@ client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
 sent_events = set()
-pre_alerts_2h = set()
+pre_alerts_1h = set()      # 1 Stunde vorher
+pre_alerts_30m = set()     # 30 Minuten vorher
 last_events = []
 last_fetch_time = None
 loop_started = False
@@ -38,7 +39,25 @@ def get_mention():
 
 
 def get_pairs(country: str, title: str = "") -> str:
-    return "NAS100, US30, XAUUSD, USOIL, BTC"
+    c = country.upper()
+    if "USD" in c or "US" in c:
+        return "EURUSD, GBPUSD, USDJPY, NAS100, US30, XAUUSD"
+    elif "EUR" in c:
+        return "EURUSD, GBPUSD, USDJPY, DAX, XAUUSD"
+    elif "JPY" in c:
+        return "USDJPY, EURJPY, GBPJPY, Nikkei, XAUUSD"
+    elif "CHF" in c:
+        return "EURCHF, USDCHF, GBPCHF, XAUUSD"
+    elif "CAD" in c:
+        return "USDCAD, EURCAD, CADJPY, USOIL"
+    elif "AUD" in c:
+        return "AUDUSD, NZDUSD, AUDJPY, ASX"
+    elif "NZD" in c:
+        return "NZDUSD, AUDNZD, NZDJPY"
+    elif "GBP" in c:
+        return "GBPUSD, EURGBP, GBPJPY, FTSE"
+    else:
+        return "EURUSD, XAUUSD"
 
 
 def get_color_and_impact_name(impact: str):
@@ -64,8 +83,11 @@ def get_market_reaction(country: str, is_better: bool):
     elif "JPY" in country:
         return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
 🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "CHF" in country:
+        return f"""{emoji} EURCHF {arrow if not is_better else '↓'}    {emoji} USDCHF {'↑' if is_better else '↓'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
     elif "CAD" in country:
-        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
+        return f"""{emoji} USOIL {arrow}    {emoji} USDCAD {'↑' if is_better else '↓'}"""
     elif "AUD" in country:
         return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
     else:
@@ -75,7 +97,7 @@ def get_market_reaction(country: str, is_better: bool):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 240:
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 180:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -152,7 +174,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Vorwarnung 30-120 Min + Live", flush=True)
+    print(f"🟢 News-Loop gestartet | Vorwarnung: 1 Stunde + 30 Minuten", flush=True)
 
     while not client.is_closed():
         try:
@@ -186,10 +208,10 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== VORWARNUNG: 30 bis 120 Minuten vorher ====================
-                if 1800 < diff < 7200 and key not in pre_alerts_2h:
+                # ==================== VORWARNUNG 1 STUNDE VORHER ====================
+                if 3300 < diff < 3900 and key not in pre_alerts_1h:   # ca. 55-65 Minuten vorher
                     minutes = int(diff / 60)
-                    print(f"✅ VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
+                    print(f"✅ 1h-VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
@@ -198,23 +220,40 @@ async def news_loop():
                     )
                     embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
                     msg = await channel.send(content=mention, embed=embed)
-                    pre_alerts_2h.add(key)
+                    pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT (korrekte Datenübernahme) ====================
-                if -600 < diff < 1800 and key not in sent_events:
+                # ==================== VORWARNUNG 30 MINUTEN VORHER ====================
+                if 1500 < diff < 2100 and key not in pre_alerts_30m:   # ca. 25-35 Minuten vorher
+                    minutes = int(diff / 60)
+                    print(f"✅ 30m-VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
+                    embed = discord.Embed(
+                        title=f"{impact_name} – {country} {title}",
+                        description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
+                        color=color,
+                        timestamp=event_time_berlin
+                    )
+                    embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
+                    msg = await channel.send(content=mention, embed=embed)
+                    pre_alerts_30m.add(key)
+                    message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+
+                # ==================== LIVE EVENT ====================
+                if -900 < diff < 1800 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     is_better = False
-                    diff_val = 0
-                    try:
-                        # Korrekte Übernahme der Werte
-                        a_str = str(event.get("actual", "")).replace("K","000").replace("%","").replace(",","").strip()
-                        f_str = str(event.get("forecast", "")).replace("K","000").replace("%","").replace(",","").strip()
-                        p_str = str(event.get("previous", "")).replace("K","000").replace("%","").replace(",","").strip()
+                    diff_val = "N/A"
+                    actual_str = str(event.get("actual", "")).strip()
+                    forecast_str = str(event.get("forecast", "")).strip()
+                    previous_str = str(event.get("previous", "")).strip()
 
-                        a = float(a_str) if a_str and a_str not in ["N/A", ""] else None
-                        f = float(f_str) if f_str and f_str not in ["N/A", ""] else None
+                    try:
+                        a_clean = actual_str.replace("K","000").replace("%","").replace(",","").strip()
+                        f_clean = forecast_str.replace("K","000").replace("%","").replace(",","").strip()
+
+                        a = float(a_clean) if a_clean and a_clean not in ["N/A", ""] else None
+                        f = float(f_clean) if f_clean and f_clean not in ["N/A", ""] else None
 
                         if a is not None and f is not None:
                             diff_val = round(a - f, 1)
@@ -225,12 +264,14 @@ async def news_loop():
                     arrow = "↑" if is_better else "↓"
                     market_emoji = "📈" if is_better else "📉"
 
+                    status_text = "✅ Die Daten sind **deutlich besser** als erwartet!" if is_better and a is not None else "❌ Die Daten sind **schwächer** als erwartet!"
+
                     analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
-{'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
+{status_text}
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
+Die Zahlen liegen **{'über' if is_better and a is not None else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better and a is not None else 'negatives'} Signal.
 
 {market_emoji} Was das für den Markt bedeutet:
 {get_market_reaction(event["country"], is_better)}
@@ -240,10 +281,10 @@ Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhig
 
 ━━━━━━━━━━━━━━━━━━━
 📊 Technische Daten:
-Actual:     **{event['actual']}** {arrow}
-Forecast:   **{event['forecast']}**
-Previous:   **{event['previous']}**
-Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
+Actual:     **{actual_str if actual_str else 'N/A'}** {arrow if a is not None else ''}
+Forecast:   **{forecast_str if forecast_str else 'N/A'}**
+Previous:   **{previous_str if previous_str else 'N/A'}**
+Abweichung: **{'+' if is_better and a is not None else ''}{diff_val}** ({'besser' if is_better and a is not None else 'schlechter'} als erwartet)
 """
 
                     embed = discord.Embed(
@@ -262,10 +303,10 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(60)
+        await asyncio.sleep(45)
 
 
-# ==================== FAKE NEWS TEST ====================
+# Fake-Test bleibt unverändert
 @client.event
 async def on_message(message):
     if message.author == client.user:
