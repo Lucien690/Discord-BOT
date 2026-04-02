@@ -90,7 +90,7 @@ def get_market_reaction(country: str, is_better: bool):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 90:
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 120:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -191,6 +191,8 @@ async def news_loop():
 
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name("high")
+                if color is None:
+                    continue
 
                 # 1 Stunde vorher
                 if 3300 < diff < 3900 and key not in pre_alerts_1h:
@@ -218,10 +220,10 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE EVENT mit Warte auf Actual
+                # LIVE EVENT mit kurzer Wartezeit auf Actual
                 if -1200 < diff < 2400 and key not in sent_events:
                     actual_str = ""
-                    for wait in range(6):   # max. 30 Sekunden warten
+                    for wait in range(4):   # max. 20 Sekunden warten
                         events = get_events()
                         for e in events:
                             if f"{e['title']}_{e['date']}_{e['time']}" == key:
@@ -264,7 +266,7 @@ async def news_loop():
 
                     actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
 
-                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M')} {tz_name}**
+                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M')} MESZ**
 
 {status_text}
 
@@ -301,7 +303,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(90)  # ruhiger, um Rate-Limit zu vermeiden
+        await asyncio.sleep(120)  # ruhiger Rhythmus, um Rate-Limit zu vermeiden
 
 
 @client.event
