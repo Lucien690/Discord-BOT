@@ -97,7 +97,7 @@ def get_market_reaction(country: str, is_better: bool):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 60:   # sehr häufig
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 60:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -236,21 +236,22 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT – finaler Actual-Fix mit Warte-Logik ====================
-                if -1200 < diff < 2400 and key not in sent_events:   # breiteres Fenster
-                    # Zusätzliche Warte-Schleife, um Actual-Wert abzuwarten
-                    actual_str = str(event.get("actual", "")).strip()
-                    if not actual_str or actual_str in ["N/A", ""]:
-                        print(f"   Warte auf Actual-Wert für {title}...", flush=True)
-                        await asyncio.sleep(15)  # 15 Sekunden warten und nochmal prüfen
-                        events = get_events()  # neu laden
-                        # Event neu finden
+                # ==================== LIVE EVENT – wartet aktiv auf Actual-Wert ====================
+                if -1200 < diff < 2400 and key not in sent_events:
+                    print(f"🚀 Versuche LIVE für: {title}", flush=True)
+
+                    # Warte bis zu 40 Sekunden auf den Actual-Wert
+                    actual_str = ""
+                    for wait in range(8):  # 8 Versuche × 5 Sekunden = max. 40 Sekunden
+                        events = get_events()
                         for e in events:
                             if f"{e['title']}_{e['date']}_{e['time']}" == key:
                                 actual_str = str(e.get("actual", "")).strip()
                                 break
-
-                    print(f"🚀 LIVE Event gesendet: {title} | Actual = '{actual_str}'", flush=True)
+                        if actual_str and actual_str not in ["N/A", ""]:
+                            print(f"   Actual gefunden nach {wait*5} Sekunden: {actual_str}", flush=True)
+                            break
+                        await asyncio.sleep(5)
 
                     forecast_str = str(event.get("forecast", "")).strip()
                     previous_str = str(event.get("previous", "")).strip()
@@ -276,7 +277,7 @@ async def news_loop():
 
                     status_text = "✅ Die Daten sind **deutlich besser** als erwartet!" if is_better else "❌ Die Daten sind **schwächer** als erwartet!"
 
-                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Wird aktualisiert"
+                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
 
                     analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
