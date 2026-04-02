@@ -22,7 +22,7 @@ client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
 sent_events = set()
-pre_alerts_2h = set()
+pre_alerts_2h = set()          # Nur noch 2-Stunden-Vorwarnung
 last_events = []
 last_fetch_time = None
 loop_started = False
@@ -42,7 +42,7 @@ def get_pairs(country: str, title: str = "") -> str:
 def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
-    else:
+    else:  # medium
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
 
 
@@ -95,12 +95,13 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
+            # Nur High und Medium Impact
             if impact_raw in ["high", "3", "high impact"]:
                 impact = "high"
             elif impact_raw in ["medium", "2", "med"]:
                 impact = "medium"
             else:
-                continue
+                continue  # Low Impact wird ignoriert
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -146,7 +147,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live", flush=True)
+    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live für High & Medium", flush=True)
 
     while not client.is_closed():
         try:
@@ -180,8 +181,8 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # 2-Stunden-Vorwarnung
-                if 6600 < diff < 7800 and key not in pre_alerts_2h:
+                # ==================== 2-STUNDEN-VORWARNUNG ====================
+                if 6600 < diff < 7800 and key not in pre_alerts_2h:   # ca. 110 – 130 Minuten vorher
                     minutes = int(diff / 60)
                     print(f"🔔 2H-Vorwarnung gesendet: {title}", flush=True)
                     embed = discord.Embed(
@@ -195,8 +196,8 @@ async def news_loop():
                     pre_alerts_2h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE EVENT
-                if -300 < diff < 900 and key not in sent_events:
+                # ==================== LIVE EVENT ====================
+                if -300 < diff < 900 and key not in sent_events:   # ca. 5 Min vorher bis 15 Min nach dem Release
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     is_better = False
@@ -252,7 +253,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST – Genau wie Live, nur als Test ====================
+# ==================== FAKE NEWS TEST ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -262,8 +263,7 @@ async def on_message(message):
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
 
-        # Fake-Test sieht jetzt genau wie eine echte Live-Nachricht aus
-        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (TEST)
+        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (Test)
 
 ✅ Die Daten sind **deutlich besser** als erwartet!
 
@@ -287,7 +287,7 @@ Abweichung: **+70K** (besser als erwartet)
 """
 
         embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (TEST)",
+            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
             description="**TEST – nur zur Überprüfung**",
             color=0xff0000,
             timestamp=datetime.now(berlin_tz)
