@@ -11,7 +11,6 @@ sys.stdout.reconfigure(line_buffering=True)
 
 print("🚀 SCRIPT STARTET", flush=True)
 
-# ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
 
@@ -19,10 +18,8 @@ TEST_MODE = True
 
 intents = discord.Intents.default()
 intents.message_content = True
-
 client = discord.Client(intents=intents)
 
-# ==================== VARIABLEN ====================
 sent_events = set()
 pre_alerts_90m = set()
 pre_alerts_30m = set()
@@ -31,9 +28,8 @@ last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}
 
-# GMT+2 direkt (wie auf deiner Forex Factory Einstellung)
-gmt2_tz = tz.gettz("Etc/GMT+2")
-berlin_tz = tz.gettz("Europe/Berlin")   # <-- hier war der Fehler
+berlin_tz = tz.gettz("Europe/Berlin")
+ny_tz = tz.gettz("America/New_York")
 
 
 def get_mention():
@@ -58,8 +54,10 @@ def get_pairs(country: str, title: str = "") -> str:
 def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
+    elif impact == "medium":
+        return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return None, None
+        return 0x00ff00, "📅 LOW IMPACT"   # Low Impact wieder hinzugefügt zum Testen
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -86,17 +84,14 @@ def get_market_reaction(country: str, is_better: bool):
 
 def get_events():
     global last_events, last_fetch_time
-
     if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 240:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
-
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
         content = response.content.decode("windows-1252", errors="replace")
-
         root = ET.fromstring(content)
         events = []
 
@@ -111,7 +106,13 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            if impact_raw not in ["high", "3"]:
+            if impact_raw in ["high", "3"]:
+                impact = "high"
+            elif impact_raw in ["medium", "2"]:
+                impact = "medium"
+            elif impact_raw in ["low", "1"]:
+                impact = "low"
+            else:
                 continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
@@ -122,17 +123,16 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": "high",
+                "impact": impact,
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} HIGH IMPACT Events geladen", flush=True)
+        print(f"✅ {len(events)} Events geladen (HIGH + MEDIUM + LOW zum Test)", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
-
     except Exception as e:
         print(f"❌ Fehler beim Laden: {e}", flush=True)
         return last_events
@@ -158,7 +158,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Nur HIGH IMPACT", flush=True)
+    print(f"🟢 News-Loop gestartet | HIGH + MEDIUM + LOW zum Testen", flush=True)
 
     while not client.is_closed():
         try:
@@ -179,15 +179,14 @@ async def news_loop():
                 key = f"{title}_{date_str}_{time_str}"
 
                 try:
-                    # GMT+2 direkt wie auf deiner Forex Factory
+                    # Korrigierte Umrechnung: New York → Berlin
                     naive_time = parser.parse(f"{date_str} {time_str}")
-                    event_time_gmt2 = naive_time.replace(tzinfo=gmt2_tz)
-                    event_time_berlin = event_time_gmt2.astimezone(berlin_tz)
+                    event_time_ny = naive_time.replace(tzinfo=ny_tz)
+                    event_time_berlin = event_time_ny.astimezone(berlin_tz)
                 except Exception:
                     continue
 
                 diff = (event_time_berlin - now_berlin).total_seconds()
-
                 print(f"🔍 Prüfe Event: {title} | diff = {diff:.0f} Sekunden", flush=True)
 
                 mention = get_mention()
@@ -199,7 +198,6 @@ async def news_loop():
                     # 90 Minuten vorher
                     if 4800 < diff < 6600 and key not in pre_alerts_90m:
                         print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
-
                         pre_text = f"""⏰ 90 Minuten vorher
 
 @everyone
@@ -234,15 +232,8 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
 ✔️ Kein impulsives Trading direkt beim Release
 ✔️ Plan vor dem Event festlegen
 """
-
-                        embed = discord.Embed(
-                            title=f"{impact_name} – {country} {title}",
-                            description="",
-                            color=color,
-                            timestamp=event_time_berlin
-                        )
+                        embed = discord.Embed(title=f"{impact_name} – {country} {title}", description="", color=color, timestamp=event_time_berlin)
                         embed.add_field(name="", value=pre_text, inline=False)
-
                         msg = await channel.send(content=mention, embed=embed)
                         pre_alerts_90m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
@@ -250,7 +241,6 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
                     # 30 Minuten vorher
                     if 1200 < diff < 2400 and key not in pre_alerts_30m:
                         print(f"🔔 30m-VORWARNUNG gesendet: {title}", flush=True)
-
                         pre_text = f"""⏰ 30 Minuten vorher
 
 @everyone
@@ -276,20 +266,13 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
 💡 Tipp:
 Bleib ruhig und halte deinen Plan ein.
 """
-
-                        embed = discord.Embed(
-                            title=f"{impact_name} – {country} {title}",
-                            description="",
-                            color=color,
-                            timestamp=event_time_berlin
-                        )
+                        embed = discord.Embed(title=f"{impact_name} – {country} {title}", description="", color=color, timestamp=event_time_berlin)
                         embed.add_field(name="", value=pre_text, inline=False)
-
                         msg = await channel.send(content=mention, embed=embed)
                         pre_alerts_30m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    # LIVE EVENT – DEIN GEWÜNSCHTER TEXT
+                    # LIVE mit deinem exakten Text
                     if -300 < diff < 300 and key not in sent_events:
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -368,12 +351,7 @@ Die ersten Minuten nach solchen News sind extrem volatil und unberechenbar
 {'Stärker' if is_better else 'Schwächer'} als erwartete Daten = {'positive' if is_better else 'vorsichtige'} Marktstimmung + Bewegung in mehreren Assets
 """
 
-                        embed = discord.Embed(
-                            title=f"🚨 {impact_name} – {country} {title}",
-                            description="",
-                            color=color,
-                            timestamp=now_berlin
-                        )
+                        embed = discord.Embed(title=f"{impact_name} – {country} {title}", description="", color=color, timestamp=now_berlin)
                         embed.add_field(name="", value=live_text, inline=False)
 
                         msg = await channel.send(content=mention, embed=embed)
@@ -386,16 +364,14 @@ Die ersten Minuten nach solchen News sind extrem volatil und unberechenbar
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST (unverändert) ====================
+# Fake Test unverändert
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
-
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
-
         analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (Test)
 
 ✅ Die Daten sind **deutlich besser** als erwartet!
@@ -418,23 +394,16 @@ Forecast:   **180K**
 Previous:   **170K**
 Abweichung: **+70K** (besser als erwartet)
 """
-
-        embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
-            description="**TEST – nur zur Überprüfung**",
-            color=0xff0000,
-            timestamp=datetime.now(berlin_tz)
-        )
+        embed = discord.Embed(title="🚨 HIGH IMPACT – USD Fake Event (Test)", description="**TEST – nur zur Überprüfung**", color=0xff0000, timestamp=datetime.now(berlin_tz))
         embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
         embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
-
         await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
 async def on_ready():
     global loop_started
-    print(f"🤖 Eingeloggt als {client.user} | Nur HIGH IMPACT", flush=True)
+    print(f"🤖 Eingeloggt als {client.user} | HIGH + MEDIUM + LOW zum Testen", flush=True)
     if not loop_started:
         client.loop.create_task(news_loop())
         loop_started = True
