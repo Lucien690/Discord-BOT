@@ -46,12 +46,6 @@ def get_color_and_impact_name(impact: str):
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
 
 
-def is_speech_event(title: str) -> bool:
-    """Erkennt Reden und ähnliche Events ohne echte Daten"""
-    speech_keywords = ["Speaks", "Speech", "Talk", "Address", "Press Conference", "Trump"]
-    return any(keyword.lower() in title.lower() for keyword in speech_keywords)
-
-
 def get_market_reaction(country: str, is_better: bool):
     arrow = "↑" if is_better else "↓"
     emoji = "📈" if is_better else "📉"
@@ -182,11 +176,10 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 2-STUNDEN-VORWARNUNG ====================
-                if 5400 < diff < 9000 and key not in pre_alerts_2h:   # ca. 90 – 150 Minuten vorher
+                # 2-Stunden-Vorwarnung (ca. 90 – 150 Minuten vorher)
+                if 5400 < diff < 9000 and key not in pre_alerts_2h:
                     minutes = int(diff / 60)
                     print(f"🔔 2H-Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
-
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
@@ -198,40 +191,24 @@ async def news_loop():
                     pre_alerts_2h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT ====================
-                if -300 < diff < 1200 and key not in sent_events:   # 5 Min vorher bis 20 Min nach
+                # LIVE EVENT
+                if -300 < diff < 1200 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
-                    is_speech = is_speech_event(title)
+                    is_better = False
+                    diff_val = 0
+                    try:
+                        a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
+                        f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
+                        diff_val = round(a - f, 1)
+                        is_better = a > f if a and f else False
+                    except:
+                        pass
 
-                    if is_speech:
-                        # Spezielle Nachricht für Reden
-                        analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
+                    arrow = "↑" if is_better else "↓"
+                    market_emoji = "📈" if is_better else "📉"
 
-🎤 Die Rede von {country} läuft jetzt.
-
-🧠 Einfache Erklärung:
-Reden können starke Marktreaktionen auslösen, besonders wenn unerwartete Aussagen gemacht werden.
-
-💡 Tipp für Anfänger:
-Höre genau zu oder warte auf Zusammenfassungen. Trade nicht impulsiv in den ersten Minuten.
-"""
-                    else:
-                        # Normale Daten-Nachricht
-                        is_better = False
-                        diff_val = 0
-                        try:
-                            a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                            f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                            diff_val = round(a - f, 1)
-                            is_better = a > f if a and f else False
-                        except:
-                            pass
-
-                        arrow = "↑" if is_better else "↓"
-                        market_emoji = "📈" if is_better else "📉"
-
-                        analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
+                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
 {'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
 
@@ -242,7 +219,14 @@ Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen.
 {get_market_reaction(event["country"], is_better)}
 
 💡 Praktischer Tipp für Anfänger:
-Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat.
+Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
+
+━━━━━━━━━━━━━━━━━━━
+📊 Technische Daten:
+Actual:     **{event['actual']}** {arrow}
+Forecast:   **{event['forecast']}**
+Previous:   **{event['previous']}**
+Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
 """
 
                     embed = discord.Embed(
@@ -264,7 +248,7 @@ Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhig
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST ====================
+# ==================== FAKE NEWS TEST – Alte einfache Version ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -273,12 +257,19 @@ async def on_message(message):
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
-        # Hier kannst du später die volle Test-Nachricht einfügen
-        await message.channel.send(content="@everyone", embed=discord.Embed(
-            title="Test-Nachricht",
-            description="Der Bot ist aktiv und bereit.",
-            color=0x00ff00
-        ))
+
+        embed = discord.Embed(
+            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            description="**TEST – nur zur Überprüfung**",
+            color=0xff0000
+        )
+        embed.add_field(
+            name="Info",
+            value="Die neue Version mit Aktien-Emojis und Pfeilen wird getestet.",
+            inline=False
+        )
+
+        await message.channel.send(content="@everyone", embed=embed)
 
 
 @client.event
