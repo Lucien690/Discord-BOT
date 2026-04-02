@@ -1,5 +1,3 @@
-Funktionierender Bot 
-
 import discord
 import asyncio
 import requests
