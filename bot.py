@@ -22,7 +22,7 @@ client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
 sent_events = set()
-pre_alerts_2h = set()          # Nur noch 2-Stunden-Vorwarnung
+pre_alerts_2h = set()
 last_events = []
 last_fetch_time = None
 loop_started = False
@@ -33,39 +33,6 @@ berlin_tz = tz.gettz("Europe/Berlin")
 
 def get_mention():
     return "@everyone"
-
-
-def get_pairs(country: str, title: str = "") -> str:
-    return "NAS100, US30, XAUUSD, USOIL, BTC"
-
-
-def get_color_and_impact_name(impact: str):
-    if impact == "high":
-        return 0xff0000, "🚨 HIGH IMPACT"
-    else:  # medium
-        return 0xffaa00, "⚠️ MEDIUM IMPACT"
-
-
-def get_market_reaction(country: str, is_better: bool):
-    arrow = "↑" if is_better else "↓"
-    emoji = "📈" if is_better else "📉"
-
-    if "USD" in country or "US" in country:
-        return f"""{emoji} NAS100 {arrow}    {emoji} US30 {arrow}
-🛢️ USOIL {arrow}     ₿ BTC {arrow}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "EUR" in country:
-        return f"""{emoji} DAX {arrow}    {emoji} EURUSD {'↑' if is_better else '↓'}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "JPY" in country:
-        return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "CAD" in country:
-        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
-    elif "AUD" in country:
-        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
-    else:
-        return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
 
 
 def get_events():
@@ -95,13 +62,12 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # Nur High und Medium Impact
             if impact_raw in ["high", "3", "high impact"]:
                 impact = "high"
             elif impact_raw in ["medium", "2", "med"]:
                 impact = "medium"
             else:
-                continue  # Low Impact wird ignoriert
+                continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -117,7 +83,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events (High + Medium Impact) geladen", flush=True)
+        print(f"✅ {len(events)} Events (High + Medium) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -147,14 +113,14 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live für High & Medium", flush=True)
+    print(f"🟢 News-Loop gestartet | Vorwarnung 90-150 Min + Live", flush=True)
 
     while not client.is_closed():
         try:
             await delete_old_messages(channel)
 
             now_berlin = datetime.now(berlin_tz)
-            print(f"⏰ Check um {now_berlin.strftime('%Y-%m-%d %H:%M:%S')} (MEZ/MESZ)", flush=True)
+            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S')} MEZ", flush=True)
 
             events = get_events()
 
@@ -181,10 +147,10 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 2-STUNDEN-VORWARNUNG ====================
-                if 6600 < diff < 7800 and key not in pre_alerts_2h:   # ca. 110 – 130 Minuten vorher
+                # ==================== VORWARNUNG (90 - 150 Minuten) ====================
+                if 5400 < diff < 9000 and key not in pre_alerts_2h:
                     minutes = int(diff / 60)
-                    print(f"🔔 2H-Vorwarnung gesendet: {title}", flush=True)
+                    print(f"✅ VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
@@ -197,8 +163,9 @@ async def news_loop():
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                 # ==================== LIVE EVENT ====================
-                if -300 < diff < 900 and key not in sent_events:   # ca. 5 Min vorher bis 15 Min nach dem Release
+                if -300 < diff < 900 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
+                    # ... (Live-Nachricht bleibt unverändert)
 
                     is_better = False
                     diff_val = 0
@@ -247,13 +214,19 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
+                else:
+                    if diff < 0:
+                        print(f"   → Event bereits vorbei (diff = {diff})", flush=True)
+                    elif diff < 5400:
+                        print(f"   → Noch zu früh für Vorwarnung (diff = {diff})", flush=True)
+
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST ====================
+# Fake-Test bleibt gleich wie vorher
 @client.event
 async def on_message(message):
     if message.author == client.user:
