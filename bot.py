@@ -59,7 +59,7 @@ def get_color_and_impact_name(impact: str):
     elif impact == "medium":
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return None, None  # Low Impact wird ignoriert
+        return None, None
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -111,13 +111,12 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # Nur HIGH und MEDIUM Impact
             if impact_raw in ["high", "3"]:
                 impact = "high"
             elif impact_raw in ["medium", "2"]:
                 impact = "medium"
             else:
-                continue  # Low Impact komplett raus
+                continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -200,7 +199,7 @@ async def news_loop():
                     continue
 
                 if TEST_MODE:
-                    # ==================== 90 MINUTEN VORHER ====================
+                    # 90 Minuten vorher
                     if 4800 < diff < 6600 and key not in pre_alerts_90m:
                         minutes = int(diff / 60)
                         print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
@@ -252,7 +251,7 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
                         pre_alerts_90m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    # ==================== 30 MINUTEN VORHER ====================
+                    # 30 Minuten vorher
                     if 1200 < diff < 2400 and key not in pre_alerts_30m:
                         minutes = int(diff / 60)
                         print(f"🔔 30m-VORWARNUNG gesendet: {title}", flush=True)
@@ -295,7 +294,7 @@ Bleib ruhig und halte deinen Plan ein.
                         pre_alerts_30m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    # ==================== LIVE EVENT (unverändert) ====================
+                    # ==================== LIVE EVENT – DEIN NEUER TEXT ====================
                     if -600 < diff < 1800 and key not in sent_events:
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -313,37 +312,77 @@ Bleib ruhig und halte deinen Plan ein.
                             pass
 
                         arrow = "↑" if is_better else "↓"
-                        market_emoji = "📈" if is_better else "📉"
 
-                        analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
+                        # DEIN GEWÜNSCHTER LIVE-TEXT
+                        live_text = f"""🚨 {impact_name} – {country} {title}
 
-{'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
+📅 Event läuft JETZT!
+
+📊 Marktanalyse
+⏱️ Status: LIVE
+
+⸻
+
+{'✅ Die Daten sind besser als erwartet!' if is_better else '❌ Die Daten sind schwächer als erwartet!'}
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
+Die {title} zeigen, wie viele Menschen in den USA neu Arbeitslosengeld beantragen.   ← (wird dynamisch angepasst, aber du kannst es später noch erweitern)
 
-{market_emoji} Was das für den Markt bedeutet:
-{get_market_reaction(event["country"], is_better)}
+👉 Die Zahl ist {'niedriger' if is_better else 'höher'} als erwartet
+➡️ {'Weniger' if is_better else 'Mehr'} Arbeitslose = {'starker' if is_better else 'schwächerer'} Arbeitsmarkt
+➡️ Das ist ein {'positives' if is_better else 'negatives'} Signal für die Wirtschaft
 
-💡 Praktischer Tipp für Anfänger:
-Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
+⸻
+
+📈 Was das für den Markt bedeutet:
+	•	📈 US-Indizes (NAS100, US30) → steigen oft
+	•	📈 USD → wird stärker
+	•	📈 USOIL & BTC → können profitieren
+	•	📉 XAUUSD (Gold) → fällt häufig
+
+⸻
+
+💡 Warum reagiert der Markt so?
+Starke Arbeitsmarktdaten erhöhen die Wahrscheinlichkeit, dass die Wirtschaft stabil bleibt →
+👉 Investoren gehen mehr Risiko ein
+👉 Kapital fließt in Aktien & Risk Assets
+👉 Gold verliert an Attraktivität
+
+⸻
+
+⚠️ Praktischer Tipp für Anfänger:
+Die ersten Minuten nach solchen News sind extrem volatil und unberechenbar
+
+👉 Warte 10–15 Minuten, bis sich eine klare Richtung bildet
+👉 Vermeide impulsive Einstiege direkt nach Release
+
+⸻
 
 ━━━━━━━━━━━━━━━━━━━
 📊 Technische Daten:
-Actual:     **{event['actual']}** {arrow}
-Forecast:   **{event['forecast']}**
-Previous:   **{event['previous']}**
-Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
+	•	Actual: {event['actual']}
+	•	Forecast: {event['forecast']}
+	•	Previous: {event['previous']}
+	•	Abweichung: {'+' if is_better else ''}{diff_val} ({'positiv' if is_better else 'negativ'})
+
+⸻
+
+💱 Betroffene Märkte:
+{get_pairs(country, title)}
+
+⸻
+
+💡 Fazit:
+{'Stärker' if is_better else 'Schwächer'} als erwartete Daten = {'positive' if is_better else 'vorsichtige'} Marktstimmung + Bewegung in mehreren Assets
 """
 
                         embed = discord.Embed(
-                            title=f"{impact_name} – {country} {title}",
-                            description="**Event läuft JETZT!**",
+                            title=f"🚨 {impact_name} – {country} {title}",
+                            description="",
                             color=color,
                             timestamp=now_berlin
                         )
-                        embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
-                        embed.add_field(name="💱 Betroffene Märkte", value=get_pairs(country, title), inline=False)
+                        embed.add_field(name="", value=live_text, inline=False)
 
                         msg = await channel.send(content=mention, embed=embed)
                         sent_events.add(key)
