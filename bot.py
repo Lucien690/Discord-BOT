@@ -90,7 +90,7 @@ def get_market_reaction(country: str, is_better: bool):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 120:
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 180:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -220,18 +220,17 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE EVENT mit kurzer Wartezeit auf Actual
+                # LIVE EVENT – sehr zurückhaltend
                 if -1200 < diff < 2400 and key not in sent_events:
-                    actual_str = ""
-                    for wait in range(4):   # max. 20 Sekunden warten
+                    # Kurze Wartezeit, nur 1 Versuch
+                    actual_str = str(event.get("actual", "")).strip()
+                    if not actual_str or actual_str in ["N/A", ""]:
+                        await asyncio.sleep(10)
                         events = get_events()
                         for e in events:
                             if f"{e['title']}_{e['date']}_{e['time']}" == key:
                                 actual_str = str(e.get("actual", "")).strip()
                                 break
-                        if actual_str and actual_str not in ["N/A", ""]:
-                            break
-                        await asyncio.sleep(5)
 
                     forecast_str = str(event.get("forecast", "")).strip()
                     previous_str = str(event.get("previous", "")).strip()
@@ -303,7 +302,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(120)  # ruhiger Rhythmus, um Rate-Limit zu vermeiden
+        await asyncio.sleep(180)  # 3 Minuten Pause – sehr ruhig
 
 
 @client.event
