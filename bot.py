@@ -97,7 +97,7 @@ def get_market_reaction(country: str, is_better: bool):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 120:  # öfter neu laden
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 90:   # sehr häufig neu laden
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -236,7 +236,7 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT – stark verbesserte Actual-Erkennung ====================
+                # ==================== LIVE EVENT – stärkster Actual-Fix ====================
                 if -900 < diff < 1800 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -248,23 +248,25 @@ async def news_loop():
                     diff_val = "N/A"
 
                     try:
-                        # Sehr robuste Bereinigung für alle möglichen Formate (%, K, negative Zahlen, etc.)
-                        a_clean = actual_str.replace("K", "000").replace("%", "").replace(",", "").replace(" ", "").strip()
-                        f_clean = forecast_str.replace("K", "000").replace("%", "").replace(",", "").replace(" ", "").strip()
+                        # Sehr aggressives Cleaning für alle möglichen Formate
+                        a_clean = actual_str.replace("K","000").replace("%","").replace(",","").replace(" ","").replace("-","").strip()
+                        f_clean = forecast_str.replace("K","000").replace("%","").replace(",","").replace(" ","").replace("-","").strip()
 
-                        if a_clean and a_clean not in ["N/A", "-", ""]:
-                            a = float(a_clean)
-                            if f_clean and f_clean not in ["N/A", "-", ""]:
-                                f = float(f_clean)
+                        if a_clean and a_clean.isdigit() or (a_clean.startswith('.') or a_clean[1:].isdigit() if len(a_clean) > 1 else False):
+                            a = float(actual_str.replace("K","000").replace("%","").replace(",","").strip())
+                            if f_clean:
+                                f = float(forecast_str.replace("K","000").replace("%","").replace(",","").strip())
                                 diff_val = round(a - f, 1)
                                 is_better = a > f
-                    except Exception as e:
-                        print(f"   Actual-Parsing Fehler: {e}", flush=True)
+                    except:
+                        pass
 
                     arrow = "↑" if is_better else "↓"
                     market_emoji = "📈" if is_better else "📉"
 
                     status_text = "✅ Die Daten sind **deutlich besser** als erwartet!" if is_better else "❌ Die Daten sind **schwächer** als erwartet!"
+
+                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Wird aktualisiert"
 
                     analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
 
@@ -281,7 +283,7 @@ Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhig
 
 ━━━━━━━━━━━━━━━━━━━
 📊 Technische Daten:
-Actual:     **{actual_str if actual_str and actual_str not in ["N/A", ""] else "Wird aktualisiert"}** {arrow if is_better else ''}
+Actual:     **{actual_display}** {arrow if is_better else ''}
 Forecast:   **{forecast_str if forecast_str else "N/A"}**
 Previous:   **{previous_str if previous_str else "N/A"}**
 Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
@@ -303,7 +305,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(40)  # noch etwas öfter prüfen
+        await asyncio.sleep(35)   # noch häufiger prüfen, damit Actual schnell erfasst wird
 
 
 # Fake-Test unverändert
