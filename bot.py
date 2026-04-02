@@ -61,12 +61,11 @@ def get_pairs(country: str, title: str = "") -> str:
 
 
 def get_color_and_impact_name(impact: str):
+    # Nur HIGH IMPACT erlaubt
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
-    elif impact == "medium":
-        return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return 0x00ff00, "📅 LOW IMPACT"
+        return None, None  # Medium und Low werden ignoriert
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -121,13 +120,8 @@ def get_events():
             forecast = event.findtext("forecast", "").strip()
             previous = event.findtext("previous", "").strip()
 
-            if impact_raw in ["high", "3"]:
-                impact = "high"
-            elif impact_raw in ["medium", "2"]:
-                impact = "medium"
-            elif impact_raw in ["low", "1"]:
-                impact = "low"
-            else:
+            # NUR HIGH IMPACT erlauben
+            if impact_raw not in ["high", "3"]:
                 continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
@@ -138,13 +132,13 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": impact,
+                "impact": "high",
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen", flush=True)
+        print(f"✅ {len(events)} HIGH IMPACT Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -174,7 +168,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Vorwarnung: 1 Stunde + 30 Minuten", flush=True)
+    print(f"🟢 News-Loop gestartet | Nur HIGH IMPACT | Vorwarnung: 1 Stunde + 30 Minuten", flush=True)
 
     while not client.is_closed():
         try:
@@ -209,6 +203,8 @@ async def news_loop():
 
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
+                if color is None:  # Nur High Impact
+                    continue
 
                 # 1 Stunde vorher
                 if 3300 < diff < 3900 and key not in pre_alerts_1h:
@@ -238,7 +234,7 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT – verbessertes Actual-Warten + bessere Erklärung ====================
+                # LIVE EVENT
                 if -1200 < diff < 2400 and key not in sent_events:
                     print(f"🚀 Versuche LIVE für: {title}", flush=True)
 
@@ -278,9 +274,6 @@ async def news_loop():
 
                     status_text = "✅ Die Daten sind **deutlich besser** als erwartet!" if is_better else "❌ Die Daten sind **schwächer** als erwartet!"
 
-                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
-
-                    # ==================== Informativere, aber anfängerfreundliche Erklärung ====================
                     explanation = (
                         "Die veröffentlichten Zahlen sind **besser** als die Analysten erwartet haben. "
                         "Das zeigt, dass die Wirtschaft in diesem Bereich stärker ist als gedacht."
@@ -289,7 +282,9 @@ async def news_loop():
                         "Das zeigt, dass die Wirtschaft in diesem Bereich etwas langsamer läuft als gedacht."
                     )
 
-                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M')} {tz_name}**
+                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
+
+                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M')} MESZ**
 
 {status_text}
 
@@ -329,7 +324,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         await asyncio.sleep(25)
 
 
-# Fake-Test unverändert
+# Fake-Test bleibt (für Tests)
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -376,7 +371,7 @@ Abweichung: **+70K** (besser als erwartet)
 @client.event
 async def on_ready():
     global loop_started
-    print(f"🤖 Eingeloggt als {client.user}", flush=True)
+    print(f"🤖 Eingeloggt als {client.user} | Nur HIGH IMPACT aktiv", flush=True)
     if not loop_started:
         client.loop.create_task(news_loop())
         loop_started = True
