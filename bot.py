@@ -31,8 +31,9 @@ last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}
 
-# GMT+2 direkt (wie du auf Forex Factory eingestellt hast)
+# GMT+2 direkt (wie auf deiner Forex Factory Einstellung)
 gmt2_tz = tz.gettz("Etc/GMT+2")
+berlin_tz = tz.gettz("Europe/Berlin")   # <-- hier war der Fehler
 
 
 def get_mention():
@@ -58,7 +59,7 @@ def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
     else:
-        return None, None  # Nur High Impact
+        return None, None
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -178,7 +179,7 @@ async def news_loop():
                 key = f"{title}_{date_str}_{time_str}"
 
                 try:
-                    # DIREKT GMT+2 wie auf deiner Forex Factory Einstellung
+                    # GMT+2 direkt wie auf deiner Forex Factory
                     naive_time = parser.parse(f"{date_str} {time_str}")
                     event_time_gmt2 = naive_time.replace(tzinfo=gmt2_tz)
                     event_time_berlin = event_time_gmt2.astimezone(berlin_tz)
@@ -198,6 +199,7 @@ async def news_loop():
                     # 90 Minuten vorher
                     if 4800 < diff < 6600 and key not in pre_alerts_90m:
                         print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
+
                         pre_text = f"""⏰ 90 Minuten vorher
 
 @everyone
@@ -248,6 +250,7 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
                     # 30 Minuten vorher
                     if 1200 < diff < 2400 and key not in pre_alerts_30m:
                         print(f"🔔 30m-VORWARNUNG gesendet: {title}", flush=True)
+
                         pre_text = f"""⏰ 30 Minuten vorher
 
 @everyone
@@ -287,7 +290,7 @@ Bleib ruhig und halte deinen Plan ein.
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                     # LIVE EVENT – DEIN GEWÜNSCHTER TEXT
-                    if -300 < diff < 300 and key not in sent_events:   # eng um 14:30
+                    if -300 < diff < 300 and key not in sent_events:
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                         is_better = False
