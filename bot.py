@@ -21,8 +21,7 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
-sent_events = set()
-pre_alerts_2h = set()          # Nur noch 2-Stunden-Vorwarnung
+pre_alerts_2h = set()
 last_events = []
 last_fetch_time = None
 loop_started = False
@@ -42,30 +41,13 @@ def get_pairs(country: str, title: str = "") -> str:
 def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
-    else:  # medium
+    else:
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
 
 
-def get_market_reaction(country: str, is_better: bool):
-    arrow = "↑" if is_better else "↓"
-    emoji = "📈" if is_better else "📉"
-
-    if "USD" in country or "US" in country:
-        return f"""{emoji} NAS100 {arrow}    {emoji} US30 {arrow}
-🛢️ USOIL {arrow}     ₿ BTC {arrow}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "EUR" in country:
-        return f"""{emoji} DAX {arrow}    {emoji} EURUSD {'↑' if is_better else '↓'}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "JPY" in country:
-        return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
-🟡 XAUUSD {'↓' if is_better else '↑'}"""
-    elif "CAD" in country:
-        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
-    elif "AUD" in country:
-        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
-    else:
-        return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
+def is_speech_event(title: str) -> bool:
+    speech_keywords = ["Speaks", "Speech", "Talk", "Address", "Trump", "Press Conference"]
+    return any(k.lower() in title.lower() for k in speech_keywords)
 
 
 def get_events():
@@ -91,17 +73,12 @@ def get_events():
             time_str = event.findtext("time", "").strip()
             impact_raw = event.findtext("impact", "low").lower().strip()
 
-            actual = event.findtext("actual", "N/A")
-            forecast = event.findtext("forecast", "N/A")
-            previous = event.findtext("previous", "N/A")
-
-            # Nur High und Medium Impact
             if impact_raw in ["high", "3", "high impact"]:
                 impact = "high"
             elif impact_raw in ["medium", "2", "med"]:
                 impact = "medium"
             else:
-                continue  # Low Impact wird ignoriert
+                continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -112,9 +89,6 @@ def get_events():
                 "date": date,
                 "time": time_str,
                 "impact": impact,
-                "actual": actual,
-                "forecast": forecast,
-                "previous": previous
             })
 
         print(f"✅ {len(events)} Events (High + Medium Impact) geladen", flush=True)
@@ -147,7 +121,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live für High & Medium", flush=True)
+    print(f"🟢 News-Loop gestartet | Nur 2-Stunden-Vorwarnung", flush=True)
 
     while not client.is_closed():
         try:
@@ -181,10 +155,11 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 2-STUNDEN-VORWARNUNG ====================
-                if 6600 < diff < 7800 and key not in pre_alerts_2h:   # ca. 110 – 130 Minuten vorher
+                # ==================== 2-STUNDEN-VORWARNUNG (verbessert) ====================
+                if 5400 < diff < 10800 and key not in pre_alerts_2h:   # 90 – 180 Minuten vorher (ca. 1,5 – 3 Stunden)
                     minutes = int(diff / 60)
-                    print(f"🔔 2H-Vorwarnung gesendet: {title}", flush=True)
+                    print(f"🔔 2H-Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
+
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
@@ -192,60 +167,14 @@ async def news_loop():
                         timestamp=event_time_berlin
                     )
                     embed.add_field(name="🌍 Volatilität", value="Hohe Marktreaktion erwartet", inline=False)
+                    embed.set_footer(text="Vorwarnung • 2 Stunden vorher")
                     msg = await channel.send(content=mention, embed=embed)
                     pre_alerts_2h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT ====================
-                if -300 < diff < 900 and key not in sent_events:   # ca. 5 Min vorher bis 15 Min nach dem Release
-                    print(f"🚀 LIVE Event gesendet: {title}", flush=True)
-
-                    is_better = False
-                    diff_val = 0
-                    try:
-                        a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                        f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                        diff_val = round(a - f, 1)
-                        is_better = a > f if a and f else False
-                    except:
-                        pass
-
-                    arrow = "↑" if is_better else "↓"
-                    market_emoji = "📈" if is_better else "📉"
-
-                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
-
-{'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
-
-🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
-
-{market_emoji} Was das für den Markt bedeutet:
-{get_market_reaction(event["country"], is_better)}
-
-💡 Praktischer Tipp für Anfänger:
-Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
-
-━━━━━━━━━━━━━━━━━━━
-📊 Technische Daten:
-Actual:     **{event['actual']}** {arrow}
-Forecast:   **{event['forecast']}**
-Previous:   **{event['previous']}**
-Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
-"""
-
-                    embed = discord.Embed(
-                        title=f"{impact_name} – {country} {title}",
-                        description="**Event läuft JETZT!**",
-                        color=color,
-                        timestamp=now_berlin
-                    )
-                    embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
-                    embed.add_field(name="💱 Betroffene Märkte", value=get_pairs(country, title), inline=False)
-
-                    msg = await channel.send(content=mention, embed=embed)
-                    sent_events.add(key)
-                    message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+                # ==================== LIVE EVENT (nur wenn gewünscht – hier deaktiviert) ====================
+                # if -300 < diff < 900 and key not in sent_events:
+                #     ... (wird nicht mehr ausgeführt)
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
@@ -253,7 +182,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST ====================
+# ==================== FAKE NEWS TEST – Genau wie Live ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -263,7 +192,7 @@ async def on_message(message):
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
 
-        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (Test)
+        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (TEST)
 
 ✅ Die Daten sind **deutlich besser** als erwartet!
 
@@ -287,7 +216,7 @@ Abweichung: **+70K** (besser als erwartet)
 """
 
         embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            title="🚨 HIGH IMPACT – USD Fake Event (TEST)",
             description="**TEST – nur zur Überprüfung**",
             color=0xff0000,
             timestamp=datetime.now(berlin_tz)
