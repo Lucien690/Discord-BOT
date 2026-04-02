@@ -60,6 +60,10 @@ def get_market_reaction(country: str, is_better: bool):
     elif "JPY" in country:
         return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
 🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "CAD" in country:
+        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
+    elif "AUD" in country:
+        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
     else:
         return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
 
@@ -112,7 +116,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events (High + Medium) geladen", flush=True)
+        print(f"✅ {len(events)} Events (High + Medium Impact) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -176,10 +180,10 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # 2-Stunden-Vorwarnung (ca. 90 – 150 Minuten vorher)
-                if 5400 < diff < 9000 and key not in pre_alerts_2h:
+                # 2-Stunden-Vorwarnung
+                if 6600 < diff < 7800 and key not in pre_alerts_2h:
                     minutes = int(diff / 60)
-                    print(f"🔔 2H-Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
+                    print(f"🔔 2H-Vorwarnung gesendet: {title}", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
@@ -192,7 +196,7 @@ async def news_loop():
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                 # LIVE EVENT
-                if -300 < diff < 1200 and key not in sent_events:
+                if -300 < diff < 900 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     is_better = False
@@ -213,7 +217,7 @@ async def news_loop():
 {'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen.
+Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
 
 {market_emoji} Was das für den Markt bedeutet:
 {get_market_reaction(event["country"], is_better)}
@@ -248,7 +252,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         await asyncio.sleep(60)
 
 
-# ==================== FAKE NEWS TEST – Alte einfache Version ====================
+# ==================== FAKE NEWS TEST – Genau wie Live, nur als Test ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -258,18 +262,40 @@ async def on_message(message):
     if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
         print("🧪 Fake News Test ausgelöst!", flush=True)
 
-        embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
-            description="**TEST – nur zur Überprüfung**",
-            color=0xff0000
-        )
-        embed.add_field(
-            name="Info",
-            value="Die neue Version mit Aktien-Emojis und Pfeilen wird getestet.",
-            inline=False
-        )
+        # Fake-Test sieht jetzt genau wie eine echte Live-Nachricht aus
+        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (TEST)
 
-        await message.channel.send(content="@everyone", embed=embed)
+✅ Die Daten sind **deutlich besser** als erwartet!
+
+🧠 Einfache Erklärung:
+Die Zahlen liegen **über** den Erwartungen. Das ist ein positives Signal für die US-Wirtschaft.
+
+📈 Was das für den Markt bedeutet:
+📈 NAS100 ↑    📈 US30 ↑
+🛢️ USOIL ↑     ₿ BTC ↑
+🟡 XAUUSD ↓   (Gold fällt meist)
+
+💡 Praktischer Tipp für Anfänger:
+Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
+
+━━━━━━━━━━━━━━━━━━━
+📊 Technische Daten:
+Actual:     **250K** ↑
+Forecast:   **180K**
+Previous:   **170K**
+Abweichung: **+70K** (besser als erwartet)
+"""
+
+        embed = discord.Embed(
+            title="🚨 HIGH IMPACT – USD Fake Event (TEST)",
+            description="**TEST – nur zur Überprüfung**",
+            color=0xff0000,
+            timestamp=datetime.now(berlin_tz)
+        )
+        embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
+        embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
+
+        await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
