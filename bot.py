@@ -15,7 +15,7 @@ print("🚀 SCRIPT STARTET", flush=True)
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
 
-TEST_MODE = True   # Für Testzwecke
+TEST_MODE = True
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -187,7 +187,7 @@ async def news_loop():
                 color, impact_name = get_color_and_impact_name(impact)
 
                 # ==================== VORWARNUNG: 30 bis 120 Minuten vorher ====================
-                if 1800 < diff < 7200 and key not in pre_alerts_2h:   # 30 – 120 Minuten vorher
+                if 1800 < diff < 7200 and key not in pre_alerts_2h:
                     minutes = int(diff / 60)
                     print(f"✅ VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
                     embed = discord.Embed(
@@ -201,17 +201,24 @@ async def news_loop():
                     pre_alerts_2h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT ====================
+                # ==================== LIVE EVENT (korrekte Datenübernahme) ====================
                 if -600 < diff < 1800 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     is_better = False
                     diff_val = 0
                     try:
-                        a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                        f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
-                        diff_val = round(a - f, 1)
-                        is_better = a > f if a and f else False
+                        # Korrekte Übernahme der Werte
+                        a_str = str(event.get("actual", "")).replace("K","000").replace("%","").replace(",","").strip()
+                        f_str = str(event.get("forecast", "")).replace("K","000").replace("%","").replace(",","").strip()
+                        p_str = str(event.get("previous", "")).replace("K","000").replace("%","").replace(",","").strip()
+
+                        a = float(a_str) if a_str and a_str not in ["N/A", ""] else None
+                        f = float(f_str) if f_str and f_str not in ["N/A", ""] else None
+
+                        if a is not None and f is not None:
+                            diff_val = round(a - f, 1)
+                            is_better = a > f
                     except:
                         pass
 
