@@ -42,7 +42,7 @@ def get_pairs(country: str, title: str = "") -> str:
 def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
-    else:  # medium
+    else:
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
 
 
@@ -95,7 +95,6 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # Nur High und Medium Impact
             if impact_raw in ["high", "3", "high impact"]:
                 impact = "high"
             elif impact_raw in ["medium", "2", "med"]:
@@ -147,7 +146,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live für High & Medium", flush=True)
+    print(f"🟢 News-Loop gestartet | 2-Stunden-Vorwarnung + Live", flush=True)
 
     while not client.is_closed():
         try:
@@ -181,10 +180,10 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 2-STUNDEN-VORWARNUNG ====================
-                if 6600 < diff < 7800 and key not in pre_alerts_2h:
+                # ==================== 2-STUNDEN-VORWARNUNG (jetzt breiter) ====================
+                if 3600 < diff < 10800 and key not in pre_alerts_2h:   # 60 – 180 Minuten vorher (robuster)
                     minutes = int(diff / 60)
-                    print(f"🔔 2H-Vorwarnung gesendet: {title}", flush=True)
+                    print(f"🔔 2H-Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
                         description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ)",
