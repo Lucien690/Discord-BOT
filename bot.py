@@ -35,6 +35,35 @@ def get_mention():
     return "@everyone"
 
 
+def get_color_and_impact_name(impact: str):
+    if impact == "high":
+        return 0xff0000, "🚨 HIGH IMPACT"
+    else:
+        return 0xffaa00, "⚠️ MEDIUM IMPACT"
+
+
+def get_market_reaction(country: str, is_better: bool):
+    arrow = "↑" if is_better else "↓"
+    emoji = "📈" if is_better else "📉"
+
+    if "USD" in country or "US" in country:
+        return f"""{emoji} NAS100 {arrow}    {emoji} US30 {arrow}
+🛢️ USOIL {arrow}     ₿ BTC {arrow}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "EUR" in country:
+        return f"""{emoji} DAX {arrow}    {emoji} EURUSD {'↑' if is_better else '↓'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "JPY" in country:
+        return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "CAD" in country:
+        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
+    elif "AUD" in country:
+        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
+    else:
+        return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
+
+
 def get_events():
     global last_events, last_fetch_time
 
@@ -83,7 +112,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events (High + Medium) geladen", flush=True)
+        print(f"✅ {len(events)} Events (High + Medium Impact) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -147,7 +176,7 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== VORWARNUNG (90 - 150 Minuten) ====================
+                # ==================== 2-STUNDEN-VORWARNUNG (90 - 150 Minuten) ====================
                 if 5400 < diff < 9000 and key not in pre_alerts_2h:
                     minutes = int(diff / 60)
                     print(f"✅ VORWARNUNG GESENDET: {title} | {minutes} Minuten vorher", flush=True)
@@ -165,7 +194,6 @@ async def news_loop():
                 # ==================== LIVE EVENT ====================
                 if -300 < diff < 900 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
-                    # ... (Live-Nachricht bleibt unverändert)
 
                     is_better = False
                     diff_val = 0
@@ -214,19 +242,13 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                else:
-                    if diff < 0:
-                        print(f"   → Event bereits vorbei (diff = {diff})", flush=True)
-                    elif diff < 5400:
-                        print(f"   → Noch zu früh für Vorwarnung (diff = {diff})", flush=True)
-
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
         await asyncio.sleep(60)
 
 
-# Fake-Test bleibt gleich wie vorher
+# ==================== FAKE NEWS TEST ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
