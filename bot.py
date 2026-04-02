@@ -39,18 +39,7 @@ def get_mention():
 
 
 def get_pairs(country: str, title: str = "") -> str:
-    if "USD" in country or "US" in country:
-        return "NAS100, US30, XAUUSD, USOIL, BTC"
-    elif "EUR" in country:
-        return "DAX, EURUSD, XAUUSD"
-    elif "JPY" in country:
-        return "Nikkei, USDJPY, XAUUSD"
-    elif "CAD" in country:
-        return "USOIL, CAD"
-    elif "AUD" in country:
-        return "ASX, AUDUSD"
-    else:
-        return "Indizes, XAUUSD"
+    return "NAS100, US30, XAUUSD, USOIL, BTC"
 
 
 def get_color_and_impact_name(impact: str):
@@ -164,7 +153,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | TEST-MODUS aktiv (große Zeitfenster)", flush=True)
+    print(f"🟢 News-Loop gestartet | TEST-MODUS aktiv", flush=True)
 
     while not client.is_closed():
         try:
@@ -199,7 +188,8 @@ async def news_loop():
                 color, impact_name = get_color_and_impact_name(impact)
 
                 if TEST_MODE:
-                    if 1800 < diff < 21600 and key not in pre_alerts_1h:
+                    # Vorwarnung: 60 bis 120 Minuten vorher (genau wie du es willst)
+                    if 3600 < diff < 7200 and key not in pre_alerts_1h:
                         minutes = int(diff / 60)
                         print(f"🔔 Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
                         embed = discord.Embed(
@@ -213,19 +203,17 @@ async def news_loop():
                         pre_alerts_1h.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
+                    # Live Event: 10 Minuten vorher bis 30 Minuten nach dem Event
                     if -600 < diff < 1800 and key not in sent_events:
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                         is_better = False
                         diff_val = 0
                         try:
-                            a_str = str(event.get("actual", "")).replace("K","000").replace("%","").replace(",","").strip()
-                            f_str = str(event.get("forecast", "")).replace("K","000").replace("%","").replace(",","").strip()
-                            a = float(a_str) if a_str and a_str != "N/A" else None
-                            f = float(f_str) if f_str and f_str != "N/A" else None
-                            if a is not None and f is not None:
-                                diff_val = round(a - f, 1)
-                                is_better = a > f
+                            a = float(str(event["actual"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
+                            f = float(str(event["forecast"]).replace("K","000").replace("%","").replace(",","").strip() or 0)
+                            diff_val = round(a - f, 1)
+                            is_better = a > f if a and f else False
                         except:
                             pass
 
