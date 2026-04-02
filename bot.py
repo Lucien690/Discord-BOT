@@ -181,7 +181,9 @@ async def news_loop():
             await delete_old_messages(channel)
 
             now_berlin = datetime.now(berlin_tz)
-            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S')} MEZ", flush=True)
+            tz_name = "MESZ" if now_berlin.utcoffset().total_seconds() == 7200 else "MEZ"
+
+            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S')} {tz_name}", flush=True)
 
             events = get_events()
 
@@ -236,20 +238,19 @@ async def news_loop():
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT – wartet aktiv auf Actual-Wert ====================
+                # ==================== LIVE EVENT – verbessertes Actual-Warten + bessere Erklärung ====================
                 if -1200 < diff < 2400 and key not in sent_events:
                     print(f"🚀 Versuche LIVE für: {title}", flush=True)
 
-                    # Warte bis zu 40 Sekunden auf den Actual-Wert
                     actual_str = ""
-                    for wait in range(8):  # 8 Versuche × 5 Sekunden = max. 40 Sekunden
+                    for wait in range(10):   # max. 50 Sekunden warten auf Actual
                         events = get_events()
                         for e in events:
                             if f"{e['title']}_{e['date']}_{e['time']}" == key:
                                 actual_str = str(e.get("actual", "")).strip()
                                 break
                         if actual_str and actual_str not in ["N/A", ""]:
-                            print(f"   Actual gefunden nach {wait*5} Sekunden: {actual_str}", flush=True)
+                            print(f"   Actual gefunden: {actual_str}", flush=True)
                             break
                         await asyncio.sleep(5)
 
@@ -279,12 +280,21 @@ async def news_loop():
 
                     actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
 
-                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ')}**
+                    # ==================== Informativere, aber anfängerfreundliche Erklärung ====================
+                    explanation = (
+                        "Die veröffentlichten Zahlen sind **besser** als die Analysten erwartet haben. "
+                        "Das zeigt, dass die Wirtschaft in diesem Bereich stärker ist als gedacht."
+                        if is_better else
+                        "Die veröffentlichten Zahlen sind **schwächer** als die Analysten erwartet haben. "
+                        "Das zeigt, dass die Wirtschaft in diesem Bereich etwas langsamer läuft als gedacht."
+                    )
+
+                    analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M')} {tz_name}**
 
 {status_text}
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
+{explanation}
 
 {market_emoji} Was das für den Markt bedeutet:
 {get_market_reaction(event["country"], is_better)}
@@ -328,7 +338,7 @@ async def on_message(message):
     if client.user.mentioned_in(message) and ("fake" in message.content.lower() or "test" in message.content.lower()):
         print("🧪 Fake News Test ausgelöst!", flush=True)
 
-        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (Test)
+        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MESZ** (Test)
 
 ✅ Die Daten sind **deutlich besser** als erwartet!
 
