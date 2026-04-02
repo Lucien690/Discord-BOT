@@ -24,7 +24,7 @@ client = discord.Client(intents=intents)
 
 # ==================== VARIABLEN ====================
 sent_events = set()
-pre_alerts_90m = set()   # Neue 90-Minuten-Vorwarnung
+pre_alerts_90m = set()
 pre_alerts_30m = set()
 last_events = []
 last_fetch_time = None
@@ -59,7 +59,7 @@ def get_color_and_impact_name(impact: str):
     elif impact == "medium":
         return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return 0x00ff00, "📅 LOW IMPACT"
+        return None, None  # Low Impact wird ignoriert
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -111,14 +111,13 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
+            # Nur HIGH und MEDIUM Impact
             if impact_raw in ["high", "3"]:
                 impact = "high"
             elif impact_raw in ["medium", "2"]:
                 impact = "medium"
-            elif impact_raw in ["low", "1"]:
-                impact = "low"
             else:
-                continue
+                continue  # Low Impact komplett raus
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -134,7 +133,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen (inkl. Low Impact)", flush=True)
+        print(f"✅ {len(events)} Events geladen (HIGH + MEDIUM IMPACT)", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -164,7 +163,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | TEST-MODUS aktiv (große Zeitfenster)", flush=True)
+    print(f"🟢 News-Loop gestartet | Nur HIGH + MEDIUM IMPACT", flush=True)
 
     while not client.is_closed():
         try:
@@ -197,10 +196,12 @@ async def news_loop():
 
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
+                if color is None:
+                    continue
 
                 if TEST_MODE:
                     # ==================== 90 MINUTEN VORHER ====================
-                    if 4800 < diff < 6600 and key not in pre_alerts_90m:   # ca. 80–110 Minuten vorher
+                    if 4800 < diff < 6600 and key not in pre_alerts_90m:
                         minutes = int(diff / 60)
                         print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
 
@@ -208,7 +209,7 @@ async def news_loop():
 
 @everyone
 
-🚨 HIGH IMPACT – {country} {title}
+🚨 {impact_name} – {country} {title}
 
 🕒 Event in ca. 90 Minuten (um {event_time_berlin.strftime('%H:%M')} MEZ)
 
@@ -260,7 +261,7 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
 
 @everyone
 
-🚨 HIGH IMPACT – {country} {title}
+🚨 {impact_name} – {country} {title}
 
 🕒 Event in ca. 30 Minuten (um {event_time_berlin.strftime('%H:%M')} MEZ)
 
