@@ -31,7 +31,8 @@ last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}
 
-berlin_tz = tz.gettz("Europe/Berlin")
+# GMT+2 direkt (wie du auf Forex Factory eingestellt hast)
+gmt2_tz = tz.gettz("Etc/GMT+2")
 
 
 def get_mention():
@@ -56,10 +57,8 @@ def get_pairs(country: str, title: str = "") -> str:
 def get_color_and_impact_name(impact: str):
     if impact == "high":
         return 0xff0000, "🚨 HIGH IMPACT"
-    elif impact == "medium":
-        return 0xffaa00, "⚠️ MEDIUM IMPACT"
     else:
-        return None, None
+        return None, None  # Nur High Impact
 
 
 def get_market_reaction(country: str, is_better: bool):
@@ -111,11 +110,7 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            if impact_raw in ["high", "3"]:
-                impact = "high"
-            elif impact_raw in ["medium", "2"]:
-                impact = "medium"
-            else:
+            if impact_raw not in ["high", "3"]:
                 continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
@@ -126,13 +121,13 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": impact,
+                "impact": "high",
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen (HIGH + MEDIUM IMPACT)", flush=True)
+        print(f"✅ {len(events)} HIGH IMPACT Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -162,7 +157,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | Nur HIGH + MEDIUM IMPACT", flush=True)
+    print(f"🟢 News-Loop gestartet | Nur HIGH IMPACT", flush=True)
 
     while not client.is_closed():
         try:
@@ -183,9 +178,10 @@ async def news_loop():
                 key = f"{title}_{date_str}_{time_str}"
 
                 try:
+                    # DIREKT GMT+2 wie auf deiner Forex Factory Einstellung
                     naive_time = parser.parse(f"{date_str} {time_str}")
-                    event_time_ny = naive_time.replace(tzinfo=tz.gettz("America/New_York"))
-                    event_time_berlin = event_time_ny.astimezone(berlin_tz)
+                    event_time_gmt2 = naive_time.replace(tzinfo=gmt2_tz)
+                    event_time_berlin = event_time_gmt2.astimezone(berlin_tz)
                 except Exception:
                     continue
 
@@ -201,9 +197,7 @@ async def news_loop():
                 if TEST_MODE:
                     # 90 Minuten vorher
                     if 4800 < diff < 6600 and key not in pre_alerts_90m:
-                        minutes = int(diff / 60)
                         print(f"🔔 90m-VORWARNUNG gesendet: {title}", flush=True)
-
                         pre_text = f"""⏰ 90 Minuten vorher
 
 @everyone
@@ -253,9 +247,7 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
 
                     # 30 Minuten vorher
                     if 1200 < diff < 2400 and key not in pre_alerts_30m:
-                        minutes = int(diff / 60)
                         print(f"🔔 30m-VORWARNUNG gesendet: {title}", flush=True)
-
                         pre_text = f"""⏰ 30 Minuten vorher
 
 @everyone
@@ -294,8 +286,8 @@ Bleib ruhig und halte deinen Plan ein.
                         pre_alerts_30m.add(key)
                         message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    # ==================== LIVE EVENT – DEIN NEUER TEXT ====================
-                    if -600 < diff < 1800 and key not in sent_events:
+                    # LIVE EVENT – DEIN GEWÜNSCHTER TEXT
+                    if -300 < diff < 300 and key not in sent_events:   # eng um 14:30
                         print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                         is_better = False
@@ -311,9 +303,6 @@ Bleib ruhig und halte deinen Plan ein.
                         except:
                             pass
 
-                        arrow = "↑" if is_better else "↓"
-
-                        # DEIN GEWÜNSCHTER LIVE-TEXT
                         live_text = f"""🚨 {impact_name} – {country} {title}
 
 📅 Event läuft JETZT!
@@ -326,7 +315,7 @@ Bleib ruhig und halte deinen Plan ein.
 {'✅ Die Daten sind besser als erwartet!' if is_better else '❌ Die Daten sind schwächer als erwartet!'}
 
 🧠 Einfache Erklärung:
-Die {title} zeigen, wie viele Menschen in den USA neu Arbeitslosengeld beantragen.   ← (wird dynamisch angepasst, aber du kannst es später noch erweitern)
+Die {title} zeigen, wie viele Menschen in den USA neu Arbeitslosengeld beantragen.
 
 👉 Die Zahl ist {'niedriger' if is_better else 'höher'} als erwartet
 ➡️ {'Weniger' if is_better else 'Mehr'} Arbeitslose = {'starker' if is_better else 'schwächerer'} Arbeitsmarkt
@@ -442,7 +431,7 @@ Abweichung: **+70K** (besser als erwartet)
 @client.event
 async def on_ready():
     global loop_started
-    print(f"🤖 Eingeloggt als {client.user}", flush=True)
+    print(f"🤖 Eingeloggt als {client.user} | Nur HIGH IMPACT", flush=True)
     if not loop_started:
         client.loop.create_task(news_loop())
         loop_started = True
