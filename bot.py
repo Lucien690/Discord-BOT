@@ -37,21 +37,18 @@ def get_mention():
 
 
 def get_pairs(country: str, title: str = "") -> str:
-    c = country.upper()
-    if "USD" in c or "US" in c:
-        return "EURUSD • GBPUSD • USDJPY\nNAS100 • US30 • XAUUSD • USOIL • BTC"
-    elif "EUR" in c:
-        return "EURUSD • GBPUSD • USDJPY\nDAX • XAUUSD"
-    elif "JPY" in c:
-        return "USDJPY • EURJPY • GBPJPY\nNikkei • XAUUSD"
-    elif "CHF" in c:
-        return "EURCHF • USDCHF • GBPCHF • XAUUSD"
-    elif "CAD" in c:
-        return "USDCAD • EURCAD • CADJPY • USOIL"
-    elif "AUD" in c:
-        return "AUDUSD • NZDUSD • AUDJPY • ASX"
+    if "USD" in country or "US" in country:
+        return "NAS100, US30, XAUUSD, USOIL, BTC"
+    elif "EUR" in country:
+        return "DAX, EURUSD, XAUUSD"
+    elif "JPY" in country:
+        return "Nikkei, USDJPY, XAUUSD"
+    elif "CAD" in country:
+        return "USOIL, CAD"
+    elif "AUD" in country:
+        return "ASX, AUDUSD"
     else:
-        return "EURUSD • XAUUSD"
+        return "Indizes, XAUUSD"
 
 
 def get_color_and_impact_name(impact: str):
@@ -63,22 +60,30 @@ def get_color_and_impact_name(impact: str):
 
 def get_market_reaction(country: str, is_better: bool):
     arrow = "↑" if is_better else "↓"
+    emoji = "📈" if is_better else "📉"
+
     if "USD" in country or "US" in country:
-        return f"📈 US-Indizes (NAS100, US30) → {arrow}\n📈 USD → wird stärker\n📈 USOIL & BTC → können profitieren\n📉 XAUUSD (Gold) → {'fällt' if is_better else 'steigt'} häufig"
+        return f"""{emoji} NAS100 {arrow}    {emoji} US30 {arrow}
+🛢️ USOIL {arrow}     ₿ BTC {arrow}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
     elif "EUR" in country:
-        return f"📈 DAX → {arrow}\n📈 EURUSD → {'↑' if is_better else '↓'}\n📉 XAUUSD → {'↓' if is_better else '↑'}"
+        return f"""{emoji} DAX {arrow}    {emoji} EURUSD {'↑' if is_better else '↓'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
     elif "JPY" in country:
-        return f"📈 Nikkei → {arrow}\n📈 USDJPY → {'↓' if is_better else '↑'}\n📉 XAUUSD → {'↓' if is_better else '↑'}"
-    elif "CHF" in country:
-        return f"📈 EURCHF → {'↓' if is_better else '↑'}\n📈 USDCHF → {arrow}\n📉 XAUUSD → {'↓' if is_better else '↑'}"
+        return f"""{emoji} Nikkei {arrow}    {emoji} USDJPY {'↓' if is_better else '↑'}
+🟡 XAUUSD {'↓' if is_better else '↑'}"""
+    elif "CAD" in country:
+        return f"""{emoji} USOIL {arrow}    {emoji} CAD {'↑' if is_better else '↓'}"""
+    elif "AUD" in country:
+        return f"""{emoji} ASX {arrow}    {emoji} AUDUSD {'↑' if is_better else '↓'}"""
     else:
-        return f"Indizes → {arrow}\nXAUUSD → {'↓' if is_better else '↑'}"
+        return f"""{emoji} Indizes {arrow}    🟡 Gold {'↓' if is_better else '↑'}"""
 
 
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 60:
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 240:
         return last_events
 
     url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
@@ -98,9 +103,9 @@ def get_events():
             time_str = event.findtext("time", "").strip()
             impact_raw = event.findtext("impact", "low").lower().strip()
 
-            actual = event.findtext("actual", "").strip()
-            forecast = event.findtext("forecast", "").strip()
-            previous = event.findtext("previous", "").strip()
+            actual = event.findtext("actual", "N/A")
+            forecast = event.findtext("forecast", "N/A")
+            previous = event.findtext("previous", "N/A")
 
             if impact_raw not in ["high", "3"]:
                 continue   # Nur HIGH IMPACT
@@ -129,6 +134,19 @@ def get_events():
         return last_events
 
 
+async def delete_old_messages(channel):
+    now = datetime.now(timezone.utc)
+    to_delete = [msg_id for msg_id, del_time in list(message_ids_to_delete.items()) if now > del_time]
+    for msg_id in to_delete:
+        try:
+            msg = await channel.fetch_message(msg_id)
+            await msg.delete()
+            print(f"🗑️ Nachricht {msg_id} nach 24h gelöscht", flush=True)
+        except:
+            pass
+        message_ids_to_delete.pop(msg_id, None)
+
+
 async def news_loop():
     await client.wait_until_ready()
     channel = client.get_channel(CHANNEL_ID)
@@ -140,8 +158,10 @@ async def news_loop():
 
     while not client.is_closed():
         try:
+            await delete_old_messages(channel)
+
             now_berlin = datetime.now(berlin_tz)
-            tz_name = "MESZ" if now_berlin.utcoffset().total_seconds() == 7200 else "MEZ"
+            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S')} MEZ", flush=True)
 
             events = get_events()
 
@@ -150,6 +170,7 @@ async def news_loop():
                 country = event["country"]
                 date_str = event["date"]
                 time_str = event["time"]
+                impact = event["impact"]
 
                 key = f"{title}_{date_str}_{time_str}"
 
@@ -162,21 +183,25 @@ async def news_loop():
 
                 diff = (event_time_berlin - now_berlin).total_seconds()
 
+                print(f"🔍 Prüfe Event: {title} | diff = {diff:.0f} Sekunden", flush=True)
+
                 mention = get_mention()
-                color, impact_name = get_color_and_impact_name("high")
+                color, impact_name = get_color_and_impact_name(impact)
                 if color is None:
                     continue
 
-                # ==================== 1 STUNDE VORHER ====================
-                if 3300 < diff < 3900 and key not in pre_alerts_1h:
+                # ==================== VORWARNUNG 1 STUNDE VORHER ====================
+                if 1800 < diff < 5400 and key not in pre_alerts_1h:   # ca. 30 - 90 Minuten vorher (breiter für Deploy)
+                    minutes = int(diff / 60)
                     print(f"✅ 1h-VORWARNUNG: {title}", flush=True)
+
                     pre_text = f"""⏰ 1 Stunde vorher
 
 @everyone
 
 🚨 HIGH IMPACT – {country} {title}
 
-🕒 Event in ca. 1 Stunde ({event_time_berlin.strftime('%H:%M')} {tz_name})
+🕒 Event in ca. 1 Stunde ({event_time_berlin.strftime('%H:%M')} MEZ)
 
 ⸻
 
@@ -217,16 +242,18 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== 30 MINUTEN VORHER ====================
-                if 1500 < diff < 2100 and key not in pre_alerts_30m:
+                # ==================== VORWARNUNG 30 MINUTEN VORHER ====================
+                if 1200 < diff < 2400 and key not in pre_alerts_30m:
+                    minutes = int(diff / 60)
                     print(f"✅ 30m-VORWARNUNG: {title}", flush=True)
+
                     pre_text = f"""⏰ 30 Minuten vorher
 
 @everyone
 
 🚨 HIGH IMPACT – {country} {title}
 
-🕒 Event in ca. 30 Minuten ({event_time_berlin.strftime('%H:%M')} {tz_name})
+🕒 Event in ca. 30 Minuten ({event_time_berlin.strftime('%H:%M')} MEZ)
 
 ⸻
 
@@ -258,43 +285,27 @@ Bleib ruhig und halte deinen Plan ein.
                     pre_alerts_30m.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE EVENT ====================
-                if -900 < diff < 1800 and key not in sent_events:
-                    print(f"🚀 Versuche LIVE für: {title}", flush=True)
-
-                    actual_str = ""
-                    for wait in range(8):   # max ~40 Sekunden warten auf Actual
-                        events = get_events()
-                        for e in events:
-                            if f"{e['title']}_{e['date']}_{e['time']}" == key:
-                                actual_str = str(e.get("actual", "")).strip()
-                                break
-                        if actual_str and actual_str not in ["N/A", ""]:
-                            break
-                        await asyncio.sleep(5)
-
-                    forecast_str = str(event.get("forecast", "")).strip()
-                    previous_str = str(event.get("previous", "")).strip()
+                # ==================== LIVE EVENT mit deinem Text ====================
+                if -600 < diff < 1800 and key not in sent_events:
+                    print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     is_better = False
-                    diff_val = "N/A"
-
+                    diff_val = 0
                     try:
-                        a_clean = actual_str.replace("K","000").replace("%","").replace(",","").replace(" ","").strip()
-                        f_clean = forecast_str.replace("K","000").replace("%","").replace(",","").replace(" ","").strip()
-                        if a_clean and a_clean not in ["N/A", "-", ""]:
-                            a = float(a_clean)
-                            if f_clean and f_clean not in ["N/A", "-", ""]:
-                                f = float(f_clean)
-                                diff_val = round(a - f, 1)
-                                is_better = a > f
+                        a_str = str(event.get("actual", "")).replace("K","000").replace("%","").replace(",","").strip()
+                        f_str = str(event.get("forecast", "")).replace("K","000").replace("%","").replace(",","").strip()
+                        a = float(a_str) if a_str and a_str != "N/A" else None
+                        f = float(f_str) if f_str and f_str != "N/A" else None
+                        if a is not None and f is not None:
+                            diff_val = round(a - f, 1)
+                            is_better = a > f
                     except:
                         pass
 
                     arrow = "↑" if is_better else "↓"
-                    status_text = "✅ Die Daten sind besser als erwartet!" if is_better else "❌ Die Daten sind schwächer als erwartet!"
+                    market_emoji = "📈" if is_better else "📉"
 
-                    actual_display = actual_str if actual_str and actual_str not in ["N/A", ""] else "Noch keine Daten"
+                    status_text = "✅ Die Daten sind besser als erwartet!" if is_better else "❌ Die Daten sind schwächer als erwartet!"
 
                     analysis_text = f"""📅 Event läuft JETZT!
 
@@ -315,7 +326,7 @@ Die {title} zeigen, wie stark die Wirtschaft in {country} aktuell läuft.
 ⸻
 
 📈 Was das für den Markt bedeutet:
-{get_market_reaction(country, is_better)}
+{get_market_reaction(event["country"], is_better)}
 
 ⸻
 
@@ -335,9 +346,9 @@ Die ersten Minuten nach solchen News sind extrem volatil und unberechenbar
 
 ━━━━━━━━━━━━━━━━━━━
 📊 Technische Daten:
-• Actual:     {actual_display}
-• Forecast:   {forecast_str if forecast_str else "N/A"}
-• Previous:   {previous_str if previous_str else "N/A"}
+• Actual:     {event['actual']}
+• Forecast:   {event['forecast']}
+• Previous:   {event['previous']}
 • Abweichung: {'+' if is_better else ''}{diff_val} ({'positiv' if is_better else 'negativ'})
 
 ⸻
@@ -363,12 +374,55 @@ Die ersten Minuten nach solchen News sind extrem volatil und unberechenbar
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                    print(f"🚀 LIVE gesendet: {title} | Actual: {actual_display}", flush=True)
-
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(30)   # alle 30 Sekunden prüfen → sehr gute Reaktionszeit
+        await asyncio.sleep(60)
+
+
+# ==================== FAKE NEWS TEST ====================
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    content_lower = message.content.lower()
+    if client.user.mentioned_in(message) and ("fake" in content_lower or "test" in content_lower):
+        print("🧪 Fake News Test ausgelöst!", flush=True)
+
+        analysis_text = """🕒 **Status:** LIVE  •  **14:30 MEZ** (Test)
+
+✅ Die Daten sind **deutlich besser** als erwartet!
+
+🧠 Einfache Erklärung:
+Die Zahlen liegen **über** den Erwartungen. Das ist ein positives Signal für die US-Wirtschaft.
+
+📈 Was das für den Markt bedeutet:
+📈 NAS100 ↑    📈 US30 ↑
+🛢️ USOIL ↑     ₿ BTC ↑
+🟡 XAUUSD ↓   (Gold fällt meist)
+
+💡 Praktischer Tipp für Anfänger:
+Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
+
+━━━━━━━━━━━━━━━━━━━
+📊 Technische Daten:
+Actual:     **250K** ↑
+Forecast:   **180K**
+Previous:   **170K**
+Abweichung: **+70K** (besser als erwartet)
+"""
+
+        embed = discord.Embed(
+            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            description="**TEST – nur zur Überprüfung**",
+            color=0xff0000,
+            timestamp=datetime.now(berlin_tz)
+        )
+        embed.add_field(name="📊 Marktanalyse", value=analysis_text, inline=False)
+        embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
+
+        await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
