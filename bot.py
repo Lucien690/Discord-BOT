@@ -53,19 +53,16 @@ def get_pairs(country: str, title: str = "") -> str:
 
 
 def get_color_and_impact_name(impact: str):
-    return 0xff0000, "🚨 HIGH IMPACT"
+    return 0x00ff00, "📅 LOW IMPACT"   # Gelb/Grün für Low Impact
 
 
-def get_market_reaction(country: str, has_actual: bool = False):
-    if not has_actual:
-        return "• Marktreaktion hängt von den veröffentlichten Daten ab\n• Hohe Volatilität erwartet"
-    
+def get_market_reaction(country: str):
     if "USD" in country or "US" in country:
         return "• 📈 NAS100 → steigt\n• 📈 US30 → steigt\n• 🛢️ USOIL → steigt\n• ₿ BTC → steigt\n• 🟡 Gold (XAUUSD) → fällt"
     elif "EUR" in country:
         return "• 📉 DAX → fällt\n• 📉 EURUSD → fällt\n• 🟡 Gold (XAUUSD) → steigt"
     else:
-        return "• Marktreaktion je nach Daten möglich"
+        return "• Marktreaktion je nach Währung möglich"
 
 
 def get_events():
@@ -95,7 +92,8 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            if impact_raw not in ["high", "3"]:
+            # === NUR LOW IMPACT (die einzige Änderung) ===
+            if impact_raw not in ["low", "1"]:
                 continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
@@ -106,13 +104,13 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": "high",
+                "impact": "low",
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} High-Impact Events geladen", flush=True)
+        print(f"✅ {len(events)} Low-Impact Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -142,7 +140,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | NUR High Impact", flush=True)
+    print(f"🟢 News-Loop gestartet | NUR Low Impact", flush=True)
 
     while not client.is_closed():
         try:
@@ -173,7 +171,7 @@ async def news_loop():
                 diff_seconds = (event_time_berlin - now_berlin).total_seconds()
 
                 mention = get_mention()
-                color, impact_name = get_color_and_impact_name("high")
+                color, impact_name = get_color_and_impact_name("low")
 
                 # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
@@ -189,17 +187,15 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post
-                if -60 < diff_seconds < 900 and key not in sent_events:
-                    print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
+                # LIVE-Post für Low Impact (gleiches Verhalten wie vorher)
+                if -180 < diff_seconds < 900 and key not in sent_events:
+                    print(f"🚀 LIVE Low-Impact Event gesendet: {title}", flush=True)
 
                     actual = event.get("actual", "N/A")
                     forecast = event.get("forecast", "N/A")
                     previous = event.get("previous", "N/A")
 
-                    has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
-
-                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht..."
+                    actual_line = f"Aktuell (Actual): {actual} 📈" if actual not in ["N/A", ""] else "Aktuell (Actual): Wird gerade veröffentlicht..."
 
                     analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
@@ -217,7 +213,7 @@ Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
 ➡️ Grundsätzlich positiv für den Markt
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
-{get_market_reaction(country, has_actual)}
+{get_market_reaction(country)}
 ━━━━━━━━━━━━━━━━━━━
 ⚠️ Wichtiger Hinweis für Anfänger:
 
@@ -269,7 +265,7 @@ Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
 ➡️ Grundsätzlich positiv für den Markt
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
-{get_market_reaction(country, True)}
+{get_market_reaction(country)}
 ━━━━━━━━━━━━━━━━━━━
 ⚠️ Wichtiger Hinweis für Anfänger:
 
@@ -304,10 +300,10 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(20)  # schneller prüfen für besseres Editieren
+        await asyncio.sleep(30)
 
 
-# Test-Command (unverändert)
+# ==================== TEST-COMMAND ====================
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -348,9 +344,9 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 """
 
         embed = discord.Embed(
-            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            title="📅 LOW IMPACT – USD Fake Event (Test)",
             description="**TEST – nur zur Überprüfung**",
-            color=0xff0000,
+            color=0x00ff00,
             timestamp=datetime.now(berlin_tz)
         )
         embed.add_field(name="📊 Marktanalyse", value=test_analysis, inline=False)
