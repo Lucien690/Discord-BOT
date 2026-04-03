@@ -97,7 +97,7 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # === NUR HIGH IMPACT (die einzige Änderung) ===
+            # NUR HIGH IMPACT – die einzige Änderung
             if impact_raw not in ["high", "3"]:
                 continue
 
@@ -161,7 +161,6 @@ async def news_loop():
                 country = event["country"]
                 date_str = event["date"]
                 time_str = event["time"]
-                impact = "high"
 
                 key = f"{title}_{date_str}_{time_str}"
 
@@ -171,14 +170,13 @@ async def news_loop():
                     event_time_berlin = event_time_utc.astimezone(berlin_tz)
 
                     print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')}", flush=True)
-
                 except Exception:
                     continue
 
                 diff_seconds = (event_time_berlin - now_berlin).total_seconds()
 
                 mention = get_mention()
-                color, impact_name = get_color_and_impact_name(impact)
+                color, impact_name = get_color_and_impact_name("high")
 
                 # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
@@ -194,7 +192,7 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post
+                # LIVE-Post (Zeitfenster wie vorher)
                 if -180 < diff_seconds < 900 and key not in sent_events:
                     print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
 
@@ -251,7 +249,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Edit-Funktion
+                # Edit wenn Actual kommt
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
