@@ -26,8 +26,8 @@ pre_alerts_1h = set()
 last_events = []
 last_fetch_time = None
 loop_started = False
-message_ids_to_delete = {}    # Für 24h-Löschung
-live_messages = {}            # Für Editieren der Nachricht
+message_ids_to_delete = {}
+live_messages = {}
 
 berlin_tz = tz.gettz("Europe/Berlin")
 utc_tz = tz.gettz("UTC")
@@ -97,11 +97,9 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # ==================== NUR HIGH IMPACT ====================
-            if impact_raw in ["high", "3"]:
-                impact = "high"
-            else:
-                continue   # ← Hier wird alles ignoriert, was nicht High Impact ist
+            # === NUR HIGH IMPACT (die einzige Änderung) ===
+            if impact_raw not in ["high", "3"]:
+                continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -111,7 +109,7 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": impact,
+                "impact": "high",
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
@@ -147,13 +145,14 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | NUR High Impact + Edit-Funktion", flush=True)
+    print(f"🟢 News-Loop gestartet | NUR High Impact", flush=True)
 
     while not client.is_closed():
         try:
             await delete_old_messages(channel)
 
             now_berlin = datetime.now(berlin_tz)
+            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S %d.%m.%Y')} MEZ/MESZ", flush=True)
 
             events = get_events()
 
@@ -162,7 +161,7 @@ async def news_loop():
                 country = event["country"]
                 date_str = event["date"]
                 time_str = event["time"]
-                impact = event["impact"]   # ist immer "high"
+                impact = "high"
 
                 key = f"{title}_{date_str}_{time_str}"
 
@@ -170,6 +169,9 @@ async def news_loop():
                     naive_time = parser.parse(f"{date_str} {time_str}")
                     event_time_utc = naive_time.replace(tzinfo=utc_tz)
                     event_time_berlin = event_time_utc.astimezone(berlin_tz)
+
+                    print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')}", flush=True)
+
                 except Exception:
                     continue
 
@@ -178,7 +180,7 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 1-STUNDEN-REMINDER (nur für High Impact) ====================
+                # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
@@ -192,7 +194,7 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE-POST + Edit-Funktion (nur High Impact) ====================
+                # LIVE-Post
                 if -180 < diff_seconds < 900 and key not in sent_events:
                     print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
 
@@ -249,7 +251,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # ==================== Actual prüfen und Nachricht editieren ====================
+                # Edit-Funktion
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
