@@ -27,7 +27,7 @@ last_events = []
 last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}    # Für 24h-Löschung
-live_messages = {}            # Für Editieren der LIVE-Nachricht
+live_messages = {}            # Für Editieren der Nachricht
 
 berlin_tz = tz.gettz("Europe/Berlin")
 utc_tz = tz.gettz("UTC")
@@ -97,14 +97,11 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
+            # ==================== NUR HIGH IMPACT ====================
             if impact_raw in ["high", "3"]:
                 impact = "high"
-            elif impact_raw in ["medium", "2"]:
-                impact = "medium"
-            elif impact_raw in ["low", "1"]:
-                impact = "low"
             else:
-                continue
+                continue   # ← Hier wird alles ignoriert, was nicht High Impact ist
 
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
@@ -120,7 +117,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen", flush=True)
+        print(f"✅ {len(events)} High-Impact Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -150,7 +147,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | 1h Reminder + Edit-Funktion", flush=True)
+    print(f"🟢 News-Loop gestartet | NUR High Impact + Edit-Funktion", flush=True)
 
     while not client.is_closed():
         try:
@@ -165,7 +162,7 @@ async def news_loop():
                 country = event["country"]
                 date_str = event["date"]
                 time_str = event["time"]
-                impact = event["impact"]
+                impact = event["impact"]   # ist immer "high"
 
                 key = f"{title}_{date_str}_{time_str}"
 
@@ -181,7 +178,7 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 1-STUNDEN-REMINDER ====================
+                # ==================== 1-STUNDEN-REMINDER (nur für High Impact) ====================
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
@@ -195,8 +192,8 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # ==================== LIVE-POST ====================
-                if impact == "high" and -180 < diff_seconds < 900 and key not in sent_events:
+                # ==================== LIVE-POST + Edit-Funktion (nur High Impact) ====================
+                if -180 < diff_seconds < 900 and key not in sent_events:
                     print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
 
                     actual = event.get("actual", "N/A")
@@ -250,10 +247,10 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-                    live_messages[key] = msg   # Für späteres Editieren
+                    live_messages[key] = msg
 
                 # ==================== Actual prüfen und Nachricht editieren ====================
-                if key in live_messages and impact == "high":
+                if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
                     if actual not in ["N/A", "", "Wird gerade veröffentlicht..."]:
@@ -353,7 +350,6 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 📊 Kurze Analyse:
 • Starke positive Abweichung
 • Deutet auf positive Marktstimmung hin
-• Kurzfristig: Momentum nach oben möglich
 """
 
         embed = discord.Embed(
