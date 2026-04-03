@@ -15,8 +15,6 @@ print("🚀 SCRIPT STARTET", flush=True)
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
 
-TEST_MODE = True
-
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -31,7 +29,7 @@ loop_started = False
 message_ids_to_delete = {}
 
 berlin_tz = tz.gettz("Europe/Berlin")
-utc_tz = tz.gettz("UTC")          # WICHTIG: XML ist in UTC/GMT
+utc_tz = tz.gettz("UTC")
 
 
 def get_mention():
@@ -134,7 +132,7 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Events geladen (inkl. Low Impact)", flush=True)
+        print(f"✅ {len(events)} Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -164,7 +162,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | TEST-MODUS aktiv", flush=True)
+    print(f"🟢 News-Loop gestartet | 1h Reminder aktiv", flush=True)
 
     while not client.is_closed():
         try:
@@ -185,12 +183,11 @@ async def news_loop():
                 key = f"{title}_{date_str}_{time_str}"
 
                 try:
-                    # XML-Zeit ist in UTC/GMT → als naive Zeit parsen und dann als UTC behandeln
                     naive_time = parser.parse(f"{date_str} {time_str}")
                     event_time_utc = naive_time.replace(tzinfo=utc_tz)
                     event_time_berlin = event_time_utc.astimezone(berlin_tz)
 
-                    print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')} MEZ/MESZ", flush=True)
+                    print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')}", flush=True)
                 except Exception as e:
                     print(f"⚠️ Zeit-Parsing-Fehler bei {title}: {e}", flush=True)
                     continue
@@ -200,76 +197,75 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # ==================== 1-STUNDEN-VORWARNUNG ====================
-                if TEST_MODE:
-                    # In Test-Modus: 30 Minuten bis 6 Stunden vor dem Event (zum Testen)
-                    if 1800 < diff_seconds < 21600 and key not in pre_alerts_1h:
-                        minutes = int(diff_seconds / 60)
-                        print(f"🔔 1h-Vorwarnung gesendet: {title} (in {minutes} Minuten)", flush=True)
+                # ==================== 1-STUNDEN-REMINDER (nur ca. 50–70 Minuten vorher) ====================
+                if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
+                    minutes = int(diff_seconds / 60)
+                    print(f"🔔 1h-Reminder gesendet: {title} (in {minutes} Minuten)", flush=True)
 
-                        embed = discord.Embed(
-                            title=f"{impact_name} – {country} {title}",
-                            description=f"🕒 Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
-                            color=color,
-                            timestamp=event_time_berlin
-                        )
-                        embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
-                        msg = await channel.send(content=mention, embed=embed)
-                        pre_alerts_1h.add(key)
-                        message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
+                    embed = discord.Embed(
+                        title=f"{impact_name} – {country} {title}",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
+                        color=color,
+                        timestamp=event_time_berlin
+                    )
+                    embed.add_field(name="🌍 Volatilität", value="Marktreaktion erwartet", inline=False)
+                    msg = await channel.send(content=mention, embed=embed)
+                    pre_alerts_1h.add(key)
+                    message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                else:
-                    # Normal-Modus: echte ~60 Minuten vorher
-                    if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:   # ca. 50–70 Minuten
-                        embed = discord.Embed(
-                            title=f"{impact_name} – {country} {title}",
-                            description=f"🕒 **Erinnerung:** Event in ca. **60 Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
-                            color=color,
-                            timestamp=event_time_berlin
-                        )
-                        msg = await channel.send(content=mention, embed=embed)
-                        pre_alerts_1h.add(key)
-                        message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-
-                # ==================== LIVE EVENT (Actual-Wert) ====================
-                if -300 < diff_seconds < 1800 and key not in sent_events:   # ca. 5 Min vorher bis 30 Min nach
-                    print(f"🚀 LIVE Event gesendet: {title} um {event_time_berlin.strftime('%H:%M')} MEZ", flush=True)
+                # ==================== LIVE-POST mit Analyse ====================
+                if impact == "high" and -180 < diff_seconds < 900 and key not in sent_events:
+                    print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
 
                     is_better = False
                     diff_val = 0
-                    try:
-                        a_str = str(event.get("actual", "")).replace("K","000").replace("%","").replace(",","").strip()
-                        f_str = str(event.get("forecast", "")).replace("K","000").replace("%","").replace(",","").strip()
-                        a = float(a_str) if a_str and a_str != "N/A" else None
-                        f = float(f_str) if f_str and f_str != "N/A" else None
-                        if a is not None and f is not None:
-                            diff_val = round(a - f, 1)
-                            is_better = a > f
-                    except:
-                        pass
+                    actual_str = str(event.get("actual", "")).strip()
+                    forecast_str = str(event.get("forecast", "")).strip()
+
+                    has_actual = actual_str not in ["", "N/A", None]
+
+                    if has_actual:
+                        try:
+                            a_str = actual_str.replace("K","000").replace("%","").replace(",","").strip()
+                            f_str = forecast_str.replace("K","000").replace("%","").replace(",","").strip()
+                            a = float(a_str) if a_str else None
+                            f = float(f_str) if f_str else None
+                            if a is not None and f is not None:
+                                diff_val = round(a - f, 1)
+                                is_better = a > f
+                        except:
+                            pass
 
                     arrow = "↑" if is_better else "↓"
                     market_emoji = "📈" if is_better else "📉"
 
+                    if has_actual:
+                        status_text = f"Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!"
+                        explanation = f"Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen."
+                        signal = f"{'positives' if is_better else 'negatives'} Signal"
+                    else:
+                        status_text = "Die Daten werden gerade veröffentlicht..."
+                        explanation = "Sobald der Actual-Wert erscheint, wird die Marktreaktion klarer."
+                        signal = "Signal folgt gleich"
+
                     analysis_text = f"""🕒 **Status:** LIVE  •  **{event_time_berlin.strftime('%H:%M MEZ/MESZ')}**
 
-{'✅' if is_better else '❌'} Die Daten sind **{'deutlich besser' if is_better else 'schwächer'}** als erwartet!
+{'✅' if has_actual and is_better else '❌' if has_actual else '⏳'} {status_text}
 
 🧠 Einfache Erklärung:
-Die Zahlen liegen **{'über' if is_better else 'unter'}** den Erwartungen. Das ist ein {'positives' if is_better else 'negatives'} Signal.
+{explanation} Das ist ein {signal} für den Markt.
 
 {market_emoji} Was das für den Markt bedeutet:
-{get_market_reaction(event["country"], is_better)}
+{get_market_reaction(event["country"], is_better if has_actual else True)}
 
 💡 Praktischer Tipp für Anfänger:
 Warte am besten **10–15 Minuten**, bis sich der erste starke Ausschlag beruhigt hat. Die ersten Minuten sind extrem volatil!
 
 ━━━━━━━━━━━━━━━━━━━
 📊 Technische Daten:
-Actual:     **{event['actual']}** {arrow}
-Forecast:   **{event['forecast']}**
-Previous:   **{event['previous']}**
-Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better else 'schlechter'} als erwartet)
+Actual:     **{event.get('actual', 'Wird gerade veröffentlicht...')}**
+Forecast:   **{event.get('forecast', 'N/A')}**
+Previous:   **{event.get('previous', 'N/A')}**
 """
 
                     embed = discord.Embed(
@@ -288,7 +284,7 @@ Abweichung: **{'+' if is_better else ''}{diff_val}** ({'besser' if is_better els
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(30)   # alle 30 Sekunden prüfen → schneller und genauer
+        await asyncio.sleep(30)
 
 
 # ==================== FAKE NEWS TEST (unverändert) ====================
