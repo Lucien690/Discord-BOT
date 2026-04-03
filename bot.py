@@ -27,7 +27,7 @@ last_events = []
 last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}    # Für 24h-Löschung
-live_messages = {}            # Für Editieren der Nachricht
+live_messages = {}            # Für Editieren der LIVE-Nachricht
 
 berlin_tz = tz.gettz("Europe/Berlin")
 utc_tz = tz.gettz("UTC")
@@ -181,7 +181,7 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # 1-Stunden-Reminder
+                # ==================== 1-STUNDEN-REMINDER ====================
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
@@ -195,7 +195,7 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post
+                # ==================== LIVE-POST ====================
                 if impact == "high" and -180 < diff_seconds < 900 and key not in sent_events:
                     print(f"🚀 LIVE High-Impact Event gesendet: {title}", flush=True)
 
@@ -250,14 +250,13 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 
                     sent_events.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
-                    live_messages[key] = msg   # Zum späteren Editieren speichern
+                    live_messages[key] = msg   # Für späteres Editieren
 
-                # Actual prüfen und Nachricht editieren
+                # ==================== Actual prüfen und Nachricht editieren ====================
                 if key in live_messages and impact == "high":
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
                     if actual not in ["N/A", "", "Wird gerade veröffentlicht..."]:
-                        # Neuen Text mit Actual erstellen
                         new_analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
 📊 Wirtschaftsdaten-Update
@@ -310,6 +309,63 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
         await asyncio.sleep(30)
+
+
+# ==================== TEST-COMMAND ====================
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    content_lower = message.content.lower()
+    if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
+        print("🧪 Test-Command ausgelöst!", flush=True)
+
+        test_analysis = """🕒 Status: LIVE • 14:30 MEZ/MESZ
+━━━━━━━━━━━━━━━━━━━
+📊 Wirtschaftsdaten-Update
+
+Aktuell (Actual): 250K 📈
+Erwartung (Forecast): 180K
+Vorher (Previous): 170K
+━━━━━━━━━━━━━━━━━━━
+🧠 Einfache Erklärung:
+
+Die veröffentlichten Zahlen liegen deutlich über den Erwartungen.
+Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
+
+➡️ Grundsätzlich positiv für den Markt
+━━━━━━━━━━━━━━━━━━━
+📈 Marktreaktion (typisch):
+• 📈 NAS100 → steigt
+• 📈 US30 → steigt
+• 🛢️ USOIL → steigt
+• ₿ BTC → steigt
+• 🟡 Gold (XAUUSD) → fällt
+━━━━━━━━━━━━━━━━━━━
+⚠️ Wichtiger Hinweis für Anfänger:
+
+Die ersten Minuten nach solchen News sind sehr volatil.
+
+💡 Tipp:
+Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade eingehst.
+━━━━━━━━━━━━━━━━━━━
+📊 Kurze Analyse:
+• Starke positive Abweichung
+• Deutet auf positive Marktstimmung hin
+• Kurzfristig: Momentum nach oben möglich
+"""
+
+        embed = discord.Embed(
+            title="🚨 HIGH IMPACT – USD Fake Event (Test)",
+            description="**TEST – nur zur Überprüfung**",
+            color=0xff0000,
+            timestamp=datetime.now(berlin_tz)
+        )
+        embed.add_field(name="📊 Marktanalyse", value=test_analysis, inline=False)
+        embed.add_field(name="💱 Betroffene Märkte", value=get_pairs("USD"), inline=False)
+
+        await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
