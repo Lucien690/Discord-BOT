@@ -53,16 +53,22 @@ def get_pairs(country: str, title: str = "") -> str:
 
 
 def get_color_and_impact_name(impact: str):
-    return 0x00ff00, "📅 LOW IMPACT"   # Gelb/Grün für Low Impact
+    if impact == "high":
+        return 0xff0000, "🚨 HIGH IMPACT"
+    else:
+        return 0x00ff00, "📅 LOW IMPACT"
 
 
-def get_market_reaction(country: str):
+def get_market_reaction(country: str, has_actual: bool = False):
+    if not has_actual:
+        return "• Marktreaktion hängt von den veröffentlichten Daten ab\n• Hohe Volatilität erwartet"
+    
     if "USD" in country or "US" in country:
         return "• 📈 NAS100 → steigt\n• 📈 US30 → steigt\n• 🛢️ USOIL → steigt\n• ₿ BTC → steigt\n• 🟡 Gold (XAUUSD) → fällt"
     elif "EUR" in country:
         return "• 📉 DAX → fällt\n• 📉 EURUSD → fällt\n• 🟡 Gold (XAUUSD) → steigt"
     else:
-        return "• Marktreaktion je nach Währung möglich"
+        return "• Marktreaktion je nach Daten möglich"
 
 
 def get_events():
@@ -92,8 +98,8 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # === NUR LOW IMPACT (die einzige Änderung) ===
-            if impact_raw not in ["low", "1"]:
+            # NUR HIGH + LOW IMPACT
+            if impact_raw not in ["high", "3", "low", "1"]:
                 continue
 
             if not title or time_str in ("", "All Day", "Tentative"):
@@ -104,13 +110,13 @@ def get_events():
                 "country": country,
                 "date": date,
                 "time": time_str,
-                "impact": "low",
+                "impact": "high" if impact_raw in ["high", "3"] else "low",
                 "actual": actual,
                 "forecast": forecast,
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} Low-Impact Events geladen", flush=True)
+        print(f"✅ {len(events)} Events geladen (High + Low Impact)", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -140,7 +146,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | NUR Low Impact", flush=True)
+    print(f"🟢 News-Loop gestartet | High + Low Impact", flush=True)
 
     while not client.is_closed():
         try:
@@ -156,6 +162,7 @@ async def news_loop():
                 country = event["country"]
                 date_str = event["date"]
                 time_str = event["time"]
+                impact = event["impact"]
 
                 key = f"{title}_{date_str}_{time_str}"
 
@@ -171,7 +178,7 @@ async def news_loop():
                 diff_seconds = (event_time_berlin - now_berlin).total_seconds()
 
                 mention = get_mention()
-                color, impact_name = get_color_and_impact_name("low")
+                color, impact_name = get_color_and_impact_name(impact)
 
                 # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
@@ -187,15 +194,17 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post für Low Impact (gleiches Verhalten wie vorher)
+                # LIVE-Post
                 if -180 < diff_seconds < 900 and key not in sent_events:
-                    print(f"🚀 LIVE Low-Impact Event gesendet: {title}", flush=True)
+                    print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     actual = event.get("actual", "N/A")
                     forecast = event.get("forecast", "N/A")
                     previous = event.get("previous", "N/A")
 
-                    actual_line = f"Aktuell (Actual): {actual} 📈" if actual not in ["N/A", ""] else "Aktuell (Actual): Wird gerade veröffentlicht..."
+                    has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
+
+                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht..."
 
                     analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
@@ -213,7 +222,7 @@ Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
 ➡️ Grundsätzlich positiv für den Markt
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
-{get_market_reaction(country)}
+{get_market_reaction(country, has_actual)}
 ━━━━━━━━━━━━━━━━━━━
 ⚠️ Wichtiger Hinweis für Anfänger:
 
@@ -265,7 +274,7 @@ Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
 ➡️ Grundsätzlich positiv für den Markt
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
-{get_market_reaction(country)}
+{get_market_reaction(country, True)}
 ━━━━━━━━━━━━━━━━━━━
 ⚠️ Wichtiger Hinweis für Anfänger:
 
@@ -303,7 +312,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
         await asyncio.sleep(30)
 
 
-# ==================== TEST-COMMAND ====================
+# Test-Command (unverändert)
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -344,9 +353,9 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 """
 
         embed = discord.Embed(
-            title="📅 LOW IMPACT – USD Fake Event (Test)",
+            title="TEST – High Impact Fake Event",
             description="**TEST – nur zur Überprüfung**",
-            color=0x00ff00,
+            color=0xff0000,
             timestamp=datetime.now(berlin_tz)
         )
         embed.add_field(name="📊 Marktanalyse", value=test_analysis, inline=False)
