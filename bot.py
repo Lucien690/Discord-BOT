@@ -27,7 +27,7 @@ last_events = []
 last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}
-live_messages = {}
+live_messages = {}          # key -> message object
 
 berlin_tz = tz.gettz("Europe/Berlin")
 utc_tz = tz.gettz("UTC")
@@ -57,11 +57,6 @@ def get_color_and_impact_name(impact: str):
         return 0xff0000, "🚨 HIGH IMPACT"
     else:
         return 0x00ff00, "📅 LOW IMPACT"
-
-
-def is_speech_event(title: str) -> bool:
-    speech_keywords = ["speaks", "speech", "trump", "powell", "lagarde", "draghi", "bernanke"]
-    return any(keyword in title.lower() for keyword in speech_keywords)
 
 
 def get_market_reaction(country: str, has_actual: bool = False):
@@ -157,7 +152,6 @@ async def news_loop():
             await delete_old_messages(channel)
 
             now_berlin = datetime.now(berlin_tz)
-            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S %d.%m.%Y')} MEZ/MESZ", flush=True)
 
             events = get_events()
 
@@ -168,14 +162,12 @@ async def news_loop():
                 time_str = event["time"]
                 impact = event["impact"]
 
-                key = f"{title}_{date_str}_{time_str}"
+                key = f"{title}_{date_str}_{time_str}"   # stabiler Key
 
                 try:
                     naive_time = parser.parse(f"{date_str} {time_str}")
                     event_time_utc = naive_time.replace(tzinfo=utc_tz)
                     event_time_berlin = event_time_utc.astimezone(berlin_tz)
-
-                    print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')}", flush=True)
                 except Exception:
                     continue
 
@@ -199,7 +191,7 @@ async def news_loop():
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
                 # LIVE-Post
-                if -120 < diff_seconds < 600 and key not in sent_events:   # max. 2 Minuten früher
+                if -120 < diff_seconds < 600 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     actual = event.get("actual", "N/A")
@@ -207,27 +199,10 @@ async def news_loop():
                     previous = event.get("previous", "N/A")
 
                     has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
-                    is_speech = is_speech_event(title)
 
                     actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht..."
 
-                    if is_speech:
-                        analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
-━━━━━━━━━━━━━━━━━━━
-📊 Event-Info
-
-Dies ist eine Rede von {title}.
-Es gibt keinen numerischen Actual-Wert.
-Der Markt reagiert auf den Inhalt und Ton der Aussagen.
-
-➡️ Volatilität wird durch die Aussagen bestimmt
-━━━━━━━━━━━━━━━━━━━
-⚠️ Wichtiger Hinweis für Anfänger:
-
-Reden können sehr volatil sein. Warte auf klare Marktreaktionen, bevor du handelst.
-"""
-                    else:
-                        analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
+                    analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
 📊 Wirtschaftsdaten-Update
 
@@ -274,33 +249,79 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Editieren wenn Actual kommt (bei Reden nicht nötig)
-                if key in live_messages and not is_speech_event(title):
+                # Verbesserte Edit-Logik
+                if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
                     if actual not in ["N/A", "", "Wird gerade veröffentlicht..."]:
-                        # ... (Edit-Logik wie vorher) ...
-                        # (Ich lasse den Edit-Block hier aus Platzgründen, er bleibt gleich wie in der letzten Version)
+                        # Neue Analyse mit Actual
+                        new_analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
+━━━━━━━━━━━━━━━━━━━
+📊 Wirtschaftsdaten-Update
+
+Aktuell (Actual): {actual} 📈
+Erwartung (Forecast): {event.get('forecast', 'N/A')}
+Vorher (Previous): {event.get('previous', 'N/A')}
+━━━━━━━━━━━━━━━━━━━
+🧠 Einfache Erklärung:
+
+Die veröffentlichten Zahlen liegen deutlich über den Erwartungen.
+Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
+
+➡️ Grundsätzlich positiv für den Markt
+━━━━━━━━━━━━━━━━━━━
+📈 Marktreaktion (typisch):
+{get_market_reaction(country, True)}
+━━━━━━━━━━━━━━━━━━━
+⚠️ Wichtiger Hinweis für Anfänger:
+
+Die ersten Minuten nach solchen News sind sehr volatil.
+
+💡 Tipp:
+Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade eingehst.
+━━━━━━━━━━━━━━━━━━━
+📊 Kurze Analyse:
+• Starke Abweichung zwischen Forecast und Actual
+• Deutet auf positive Marktstimmung hin
+• Kurzfristig: Momentum nach oben möglich
+• Trotzdem: Vorsicht vor schnellen Gegenbewegungen
+"""
+
+                        new_embed = discord.Embed(
+                            title=f"{impact_name} – {country} {title}",
+                            description="**Event läuft JETZT!** (aktualisiert)",
+                            color=color,
+                            timestamp=now_berlin
+                        )
+                        new_embed.add_field(name="📊 Marktanalyse", value=new_analysis_text, inline=False)
+                        new_embed.add_field(name="💱 Betroffene Märkte", value=get_pairs(country, title), inline=False)
 
                         try:
                             await msg.edit(embed=new_embed)
-                            print(f"✏️ Nachricht für {title} editiert", flush=True)
+                            print(f"✏️ Nachricht für {title} erfolgreich editiert", flush=True)
                             del live_messages[key]
-                        except:
-                            pass
+                        except Exception as e:
+                            print(f"⚠️ Edit-Fehler bei {title}: {e}", flush=True)
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(30)
-
-
-def is_speech_event(title: str) -> bool:
-    speech_keywords = ["speaks", "speech", "trump", "powell", "lagarde", "draghi"]
-    return any(keyword in title.lower() for keyword in speech_keywords)
+        await asyncio.sleep(20)   # schneller prüfen für besseres Editieren
 
 
 # Test-Command bleibt unverändert
+@client.event
+async def on_message(message):
+    if message.author == client.user:
+        return
+
+    content_lower = message.content.lower()
+    if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
+        print("🧪 Test-Command ausgelöst!", flush=True)
+
+        # ... dein Test-Embed ...
+
+        await message.channel.send(content=get_mention(), embed=embed)
 
 
 @client.event
