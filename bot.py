@@ -76,7 +76,7 @@ def get_events():
         return last_events
 
     # Korrigierter JBlanked Endpoint (heutige Events von Forex Factory Quelle)
-    url = "https://www.jblanked.com/news/api/forex-factory/calendar/today/"
+    url = 
 
     try:
         response = requests.get(url, timeout=15)
@@ -85,7 +85,7 @@ def get_events():
 
         events = []
         for ev in data:
-            try:
+            try:"https://www.jblanked.com/news/api/forex-factory/calendar/today/"
                 title = ev.get("Event", ev.get("Name", "N/A"))
                 country = ev.get("Currency", "N/A")
                 date_time_str = ev.get("Date", "") or ev.get("Time", "")
