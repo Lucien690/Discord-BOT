@@ -13,10 +13,10 @@ print("🚀 SCRIPT STARTET – JBlanked News API Version", flush=True)
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-JBLANKED_API_KEY = os.getenv("JBLANKED_API_KEY")   # ← Dein Key aus Environment Variables
+JBLANKED_API_KEY = os.getenv("JBLANKED_API_KEY")
 
 if not JBLANKED_API_KEY:
-    print("❌ WARNUNG: JBLANKED_API_KEY fehlt in den Environment Variables!", flush=True)
+    print("❌ FEHLER: JBLANKED_API_KEY fehlt in den Environment Variables!", flush=True)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -82,58 +82,72 @@ def get_events():
 
     url = "https://www.jblanked.com/news/api/forex-factory/calendar/today/"
 
-    headers = {
-        "Authorization": f"Bearer {JBLANKED_API_KEY}"
-    }
+    # Mehrere mögliche Header-Varianten ausprobieren
+    header_options = [
+        {"Authorization": f"Bearer {JBLANKED_API_KEY}"},
+        {"X-API-Key": JBLANKED_API_KEY},
+        {"Authorization": JBLANKED_API_KEY},
+    ]
 
-    try:
-        response = requests.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
-        data = response.json()
+    for headers in header_options:
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                events = []
+                for ev in data:
+                    try:
+                        title = ev.get("Event", ev.get("Name", "N/A"))
+                        country = ev.get("Currency", "N/A")
+                        date_time_str = ev.get("Date", "") or ev.get("Time", "")
+                        impact = str(ev.get("Impact", "low")).lower()
+                        actual = ev.get("Actual", "N/A")
+                        forecast = ev.get("Forecast", "N/A")
+                        previous = ev.get("Previous", "N/A")
 
-        events = []
-        for ev in data:
-            try:
-                title = ev.get("Event", ev.get("Name", "N/A"))
-                country = ev.get("Currency", "N/A")
-                date_time_str = ev.get("Date", "") or ev.get("Time", "")
-                impact = str(ev.get("Impact", "low")).lower()
-                actual = ev.get("Actual", "N/A")
-                forecast = ev.get("Forecast", "N/A")
-                previous = ev.get("Previous", "N/A")
+                        if not title or not date_time_str:
+                            continue
 
-                if not title or not date_time_str:
-                    continue
+                        if " " in date_time_str:
+                            date_str, time_str = date_time_str.split(" ", 1)
+                        else:
+                            date_str = datetime.now().strftime("%Y-%m-%d")
+                            time_str = date_time_str[:5] if len(date_time_str) >= 5 else date_time_str
 
-                if " " in date_time_str:
-                    date_str, time_str = date_time_str.split(" ", 1)
-                else:
-                    date_str = datetime.now().strftime("%Y-%m-%d")
-                    time_str = date_time_str[:5] if len(date_time_str) >= 5 else date_time_str
+                        events.append({
+                            "title": title,
+                            "country": country,
+                            "date": date_str,
+                            "time": time_str,
+                            "impact": "high" if impact in ["high", "3"] else "low",
+                            "actual": actual,
+                            "forecast": forecast,
+                            "previous": previous
+                        })
+                    except:
+                        continue
 
-                events.append({
-                    "title": title,
-                    "country": country,
-                    "date": date_str,
-                    "time": time_str,
-                    "impact": "high" if impact in ["high", "3"] else "low",
-                    "actual": actual,
-                    "forecast": forecast,
-                    "previous": previous
-                })
-            except:
+                print(f"✅ {len(events)} Events von JBlanked geladen", flush=True)
+                last_events = events
+                last_fetch_time = datetime.now(timezone.utc)
+                return events
+
+            elif response.status_code == 401:
+                print(f"⚠️ 401 Unauthorized mit Header {list(headers.keys())[0]}", flush=True)
+                continue
+            else:
+                print(f"⚠️ Status {response.status_code}", flush=True)
                 continue
 
-        print(f"✅ {len(events)} Events von JBlanked geladen", flush=True)
-        last_events = events
-        last_fetch_time = datetime.now(timezone.utc)
-        return events
+        except Exception as e:
+            print(f"❌ Versuch fehlgeschlagen: {e}", flush=True)
+            continue
 
-    except Exception as e:
-        print(f"❌ Fehler beim Laden von JBlanked API: {e}", flush=True)
-        return last_events
+    print("❌ Alle Auth-Versuche fehlgeschlagen – Key möglicherweise nicht aktiviert oder falsch", flush=True)
+    return last_events
 
 
+# ==================== Der Rest bleibt unverändert (Reminder, LIVE-Post, Edit usw.) ====================
 async def delete_old_messages(channel):
     now = datetime.now(timezone.utc)
     to_delete = [msg_id for msg_id, del_time in list(message_ids_to_delete.items()) if now > del_time]
@@ -187,12 +201,11 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten**",
                         color=color,
                         timestamp=event_time_berlin
                     )
@@ -201,7 +214,6 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post – zur genauen Zeit
                 if -60 < diff_seconds < 600 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -254,7 +266,6 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Editieren, wenn Actual kommt
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
