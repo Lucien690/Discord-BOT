@@ -8,12 +8,12 @@ from dateutil import parser, tz
 
 sys.stdout.reconfigure(line_buffering=True)
 
-print("🚀 SCRIPT STARTET – JBlanked News API Version (kostenlos)", flush=True)
+print("🚀 SCRIPT STARTET – JBlanked News API Version", flush=True)
 
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
-JBLANKED_API_KEY = os.getenv("JBLANKED_API_KEY")   # ← Hier wird dein Key geladen
+JBLANKED_API_KEY = os.getenv("JBLANKED_API_KEY")   # ← Dein Key aus Environment Variables
 
 if not JBLANKED_API_KEY:
     print("❌ WARNUNG: JBLANKED_API_KEY fehlt in den Environment Variables!", flush=True)
@@ -83,7 +83,7 @@ def get_events():
     url = "https://www.jblanked.com/news/api/forex-factory/calendar/today/"
 
     headers = {
-        "Authorization": f"Bearer {JBLANKED_API_KEY}"   # Key wird hier verwendet
+        "Authorization": f"Bearer {JBLANKED_API_KEY}"
     }
 
     try:
@@ -133,9 +133,6 @@ def get_events():
         print(f"❌ Fehler beim Laden von JBlanked API: {e}", flush=True)
         return last_events
 
-
-# ==================== Der Rest bleibt unverändert ====================
-# (delete_old_messages, news_loop, on_message, on_ready usw.)
 
 async def delete_old_messages(channel):
     now = datetime.now(timezone.utc)
@@ -190,11 +187,12 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
+                # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten**",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
@@ -203,6 +201,7 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
+                # LIVE-Post – zur genauen Zeit
                 if -60 < diff_seconds < 600 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -255,6 +254,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
+                # Editieren, wenn Actual kommt
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
