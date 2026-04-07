@@ -5,11 +5,10 @@ from datetime import datetime, timedelta, timezone
 import os
 import sys
 from dateutil import parser, tz
-from bs4 import BeautifulSoup
 
 sys.stdout.reconfigure(line_buffering=True)
 
-print("🚀 SCRIPT STARTET – Forex Factory Web-Scraping Version (kostenlos)", flush=True)
+print("🚀 SCRIPT STARTET – JBlanked News API Version (kostenlos)", flush=True)
 
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
@@ -53,7 +52,7 @@ def get_pairs(country: str, title: str = "") -> str:
 
 
 def get_color_and_impact_name(impact: str):
-    if impact == "high":
+    if impact.lower() in ["high", "3"]:
         return 0xff0000, "🚨 HIGH IMPACT"
     else:
         return 0x00ff00, "📅 LOW IMPACT"
@@ -77,50 +76,41 @@ def get_events():
     if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:  # alle 10 Minuten
         return last_events
 
-    url = "https://www.forexfactory.com/calendar"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
-    }
+    # JBlanked Calendar Endpoint (kostenlos)
+    url = "https://www.jblanked.com/news/api/calendar/"   # oder /week oder /today – je nach Bedarf
 
     try:
-        response = requests.get(url, headers=headers, timeout=15)
+        response = requests.get(url, timeout=15)
         response.raise_for_status()
+        data = response.json()
 
-        soup = BeautifulSoup(response.text, "lxml")
         events = []
-
-        # Forex Factory Tabellenzeilen
-        rows = soup.select("tr.calendar__row")
-
-        for row in rows:
+        for ev in data:
             try:
-                time_cell = row.select_one("td.calendar__time")
-                time_str = time_cell.get_text(strip=True) if time_cell else ""
+                title = ev.get("Event", ev.get("Name", "N/A"))
+                country = ev.get("Currency", "N/A")
+                date_time_str = ev.get("Date", "") or ev.get("Time", "")
+                impact = ev.get("Impact", "low").lower()
+                actual = ev.get("Actual", "N/A")
+                forecast = ev.get("Forecast", "N/A")
+                previous = ev.get("Previous", "N/A")
 
-                currency_cell = row.select_one("td.calendar__currency")
-                country = currency_cell.get_text(strip=True) if currency_cell else "N/A"
-
-                event_cell = row.select_one("td.calendar__event")
-                title = event_cell.get_text(strip=True) if event_cell else "N/A"
-
-                impact_cell = row.select_one("td.calendar__impact")
-                impact = "high" if impact_cell and impact_cell.find("span", class_="high") else "low"
-
-                actual = row.select_one("td.calendar__actual").get_text(strip=True) if row.select_one("td.calendar__actual") else "N/A"
-                forecast = row.select_one("td.calendar__forecast").get_text(strip=True) if row.select_one("td.calendar__forecast") else "N/A"
-                previous = row.select_one("td.calendar__previous").get_text(strip=True) if row.select_one("td.calendar__previous") else "N/A"
-
-                if not title or not time_str or time_str in ("", "All Day"):
+                if not title or not date_time_str:
                     continue
 
-                date_str = datetime.now().strftime("%Y-%m-%d")
+                # Zeit parsen
+                if " " in date_time_str:
+                    date_str, time_str = date_time_str.split(" ", 1)
+                else:
+                    date_str = datetime.now().strftime("%Y-%m-%d")
+                    time_str = date_time_str
 
                 events.append({
                     "title": title,
                     "country": country,
                     "date": date_str,
                     "time": time_str,
-                    "impact": impact,
+                    "impact": "high" if impact in ["high", "3"] else "low",
                     "actual": actual,
                     "forecast": forecast,
                     "previous": previous
@@ -128,13 +118,13 @@ def get_events():
             except:
                 continue
 
-        print(f"✅ {len(events)} Events von Forex Factory geladen", flush=True)
+        print(f"✅ {len(events)} Events von JBlanked News API geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Scraping von Forex Factory: {e}", flush=True)
+        print(f"❌ Fehler beim Laden von JBlanked API: {e}", flush=True)
         return last_events
 
 
@@ -158,7 +148,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | High + Low Impact (Forex Factory Web)", flush=True)
+    print(f"🟢 News-Loop gestartet | High + Low Impact (JBlanked API)", flush=True)
 
     while not client.is_closed():
         try:
@@ -311,7 +301,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
         await asyncio.sleep(30)
 
 
-# Test-Command (einfach halten)
+# Test-Command (unverändert – füge hier deinen alten Test-Embed ein)
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -319,7 +309,7 @@ async def on_message(message):
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
         print("🧪 Test-Command ausgelöst!", flush=True)
-        # Hier kannst du deinen alten Test-Embed einfügen
+        # Dein alter Test-Embed hier
 
 
 @client.event
