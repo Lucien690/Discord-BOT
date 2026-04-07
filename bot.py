@@ -1,6 +1,7 @@
 import discord
 import asyncio
 import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import os
 import sys
@@ -8,7 +9,7 @@ from dateutil import parser, tz
 
 sys.stdout.reconfigure(line_buffering=True)
 
-print("🚀 SCRIPT STARTET – Trading Economics Guest API Version (kostenlos)", flush=True)
+print("🚀 SCRIPT STARTET – Forex Factory XML | NUR HIGH IMPACT", flush=True)
 
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
@@ -51,11 +52,8 @@ def get_pairs(country: str, title: str = "") -> str:
         return "Indizes, XAUUSD"
 
 
-def get_color_and_impact_name(importance: int):
-    if importance >= 3:
-        return 0xff0000, "🚨 HIGH IMPACT"
-    else:
-        return 0x00ff00, "📅 LOW IMPACT"
+def get_color_and_impact_name(impact: str):
+    return 0xff0000, "🚨 HIGH IMPACT"
 
 
 def get_market_reaction(country: str, has_actual: bool = False):
@@ -73,59 +71,55 @@ def get_market_reaction(country: str, has_actual: bool = False):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:  # alle 10 Minuten
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:
         return last_events
 
-    # Trading Economics Guest-Zugang (kostenlos)
-    url = "https://api.tradingeconomics.com/calendar?c=guest:guest&f=json"
+    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
 
     try:
         response = requests.get(url, timeout=15)
         response.raise_for_status()
-        data = response.json()
+        content = response.content.decode("windows-1252", errors="replace")
 
+        root = ET.fromstring(content)
         events = []
-        for ev in data:
-            try:
-                title = ev.get("Event", "N/A")
-                country = ev.get("Country", "N/A")
-                date_time_str = ev.get("Date", "")
-                importance = int(ev.get("Importance", 1))
-                actual = ev.get("Actual", "N/A")
-                forecast = ev.get("Forecast", "N/A")
-                previous = ev.get("Previous", "N/A")
 
-                if not title or not date_time_str:
-                    continue
+        for event in root.findall(".//event"):
+            title = event.findtext("title", "N/A").strip()
+            country = event.findtext("country", "N/A").strip()
+            date = event.findtext("date", "").strip()
+            time_str = event.findtext("time", "").strip()
+            impact_raw = event.findtext("impact", "low").lower().strip()
 
-                # Zeit parsen
-                if "T" in date_time_str:
-                    date_str = date_time_str[:10]
-                    time_str = date_time_str[11:16]
-                else:
-                    date_str = datetime.now().strftime("%Y-%m-%d")
-                    time_str = "00:00"
+            actual = event.findtext("actual", "N/A")
+            forecast = event.findtext("forecast", "N/A")
+            previous = event.findtext("previous", "N/A")
 
-                events.append({
-                    "title": title,
-                    "country": country,
-                    "date": date_str,
-                    "time": time_str,
-                    "impact": "high" if importance >= 3 else "low",
-                    "actual": actual,
-                    "forecast": forecast,
-                    "previous": previous
-                })
-            except:
+            # NUR HIGH IMPACT
+            if impact_raw not in ["high", "3"]:
                 continue
 
-        print(f"✅ {len(events)} Events von Trading Economics geladen", flush=True)
+            if not title or time_str in ("", "All Day", "Tentative"):
+                continue
+
+            events.append({
+                "title": title,
+                "country": country,
+                "date": date,
+                "time": time_str,
+                "impact": "high",
+                "actual": actual,
+                "forecast": forecast,
+                "previous": previous
+            })
+
+        print(f"✅ {len(events)} HIGH IMPACT Events von Forex Factory XML geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Laden von Trading Economics: {e}", flush=True)
+        print(f"❌ Fehler beim Laden der XML: {e}", flush=True)
         return last_events
 
 
@@ -149,7 +143,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | High + Low Impact (Trading Economics)", flush=True)
+    print(f"🟢 News-Loop gestartet | NUR HIGH IMPACT (Forex Factory XML)", flush=True)
 
     while not client.is_closed():
         try:
@@ -187,7 +181,7 @@ async def news_loop():
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten**",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
                         color=color,
                         timestamp=event_time_berlin
                     )
@@ -204,9 +198,9 @@ async def news_loop():
                     forecast = event.get("forecast", "N/A")
                     previous = event.get("previous", "N/A")
 
-                    has_actual = actual not in ["N/A", "", "—", "Wird gerade veröffentlicht..."]
+                    has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
 
-                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht..."
+                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht... (siehe Forex Factory Website)"
 
                     analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
@@ -253,7 +247,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
-                    if actual not in ["N/A", "", "—", "Wird gerade veröffentlicht..."]:
+                    if actual not in ["N/A", "", "Wird gerade veröffentlicht..."]:
                         new_analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
 📊 Wirtschaftsdaten-Update
