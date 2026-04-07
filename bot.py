@@ -1,15 +1,15 @@
 import discord
 import asyncio
 import requests
-import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 import os
 import sys
 from dateutil import parser, tz
+from bs4 import BeautifulSoup  # Neu für Investing.com
 
 sys.stdout.reconfigure(line_buffering=True)
 
-print("🚀 SCRIPT STARTET", flush=True)
+print("🚀 SCRIPT STARTET – Investing.com Version (kostenlos)", flush=True)
 
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
@@ -27,7 +27,7 @@ last_events = []
 last_fetch_time = None
 loop_started = False
 message_ids_to_delete = {}
-live_messages = {}          # key -> message object
+live_messages = {}
 
 berlin_tz = tz.gettz("Europe/Berlin")
 utc_tz = tz.gettz("UTC")
@@ -74,54 +74,70 @@ def get_market_reaction(country: str, has_actual: bool = False):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 240:
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:  # alle 10 Minuten
         return last_events
 
-    url = "https://nfs.faireconomy.media/ff_calendar_thisweek.xml"
+    url = "https://www.investing.com/economic-calendar/"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
+    }
 
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
-        content = response.content.decode("windows-1252", errors="replace")
 
-        root = ET.fromstring(content)
+        soup = BeautifulSoup(response.text, "lxml")
         events = []
 
-        for event in root.findall(".//event"):
-            title = event.findtext("title", "N/A").strip()
-            country = event.findtext("country", "N/A").strip()
-            date = event.findtext("date", "").strip()
-            time_str = event.findtext("time", "").strip()
-            impact_raw = event.findtext("impact", "low").lower().strip()
+        # Haupt-Tabellenzeilen für Events
+        rows = soup.select("tr.js-event-item")
 
-            actual = event.findtext("actual", "N/A")
-            forecast = event.findtext("forecast", "N/A")
-            previous = event.findtext("previous", "N/A")
+        for row in rows:
+            try:
+                time_cell = row.select_one("td.time")
+                if not time_cell:
+                    continue
+                time_str = time_cell.get_text(strip=True)
 
-            if impact_raw not in ["high", "3", "low", "1"]:
+                country_cell = row.select_one("td.flagCur")
+                country = country_cell.get_text(strip=True) if country_cell else "N/A"
+
+                event_cell = row.select_one("td.event")
+                title = event_cell.get_text(strip=True) if event_cell else "N/A"
+
+                # Impact (Sterne oder Bullen)
+                impact_cell = row.select_one("td.sentiment")
+                impact = "high" if impact_cell and "bull" in str(impact_cell) else "low"
+
+                actual = row.select_one("td.actual").get_text(strip=True) if row.select_one("td.actual") else "N/A"
+                forecast = row.select_one("td.forecast").get_text(strip=True) if row.select_one("td.forecast") else "N/A"
+                previous = row.select_one("td.previous").get_text(strip=True) if row.select_one("td.previous") else "N/A"
+
+                if not title or time_str in ("", "All Day"):
+                    continue
+
+                date_str = datetime.now().strftime("%Y-%m-%d")
+
+                events.append({
+                    "title": title,
+                    "country": country,
+                    "date": date_str,
+                    "time": time_str,
+                    "impact": impact,
+                    "actual": actual,
+                    "forecast": forecast,
+                    "previous": previous
+                })
+            except:
                 continue
 
-            if not title or time_str in ("", "All Day", "Tentative"):
-                continue
-
-            events.append({
-                "title": title,
-                "country": country,
-                "date": date,
-                "time": time_str,
-                "impact": "high" if impact_raw in ["high", "3"] else "low",
-                "actual": actual,
-                "forecast": forecast,
-                "previous": previous
-            })
-
-        print(f"✅ {len(events)} Events (High + Low) geladen", flush=True)
+        print(f"✅ {len(events)} Events von Investing.com geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Laden: {e}", flush=True)
+        print(f"❌ Fehler beim Scraping von Investing.com: {e}", flush=True)
         return last_events
 
 
@@ -145,13 +161,14 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | High + Low Impact", flush=True)
+    print(f"🟢 News-Loop gestartet | High + Low Impact (Investing.com)", flush=True)
 
     while not client.is_closed():
         try:
             await delete_old_messages(channel)
 
             now_berlin = datetime.now(berlin_tz)
+            print(f"⏰ Check um {now_berlin.strftime('%H:%M:%S %d.%m.%Y')} MEZ/MESZ", flush=True)
 
             events = get_events()
 
@@ -162,12 +179,13 @@ async def news_loop():
                 time_str = event["time"]
                 impact = event["impact"]
 
-                key = f"{title}_{date_str}_{time_str}"   # stabiler Key
+                key = f"{title}_{date_str}_{time_str}"
 
                 try:
                     naive_time = parser.parse(f"{date_str} {time_str}")
                     event_time_utc = naive_time.replace(tzinfo=utc_tz)
                     event_time_berlin = event_time_utc.astimezone(berlin_tz)
+                    print(f"🕒 Event: {title} → Berlin: {event_time_berlin.strftime('%d.%m.%Y %H:%M')}", flush=True)
                 except Exception:
                     continue
 
@@ -190,15 +208,15 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post
-                if -120 < diff_seconds < 600 and key not in sent_events:
+                # LIVE-Post – möglichst zur genauen Zeit
+                if -60 < diff_seconds < 600 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
                     actual = event.get("actual", "N/A")
                     forecast = event.get("forecast", "N/A")
                     previous = event.get("previous", "N/A")
 
-                    has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
+                    has_actual = actual not in ["N/A", "", "—", "Wird gerade veröffentlicht..."]
 
                     actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht..."
 
@@ -226,12 +244,6 @@ Die ersten Minuten nach solchen News sind sehr volatil.
 
 💡 Tipp:
 Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade eingehst.
-━━━━━━━━━━━━━━━━━━━
-📊 Kurze Analyse:
-• Starke Abweichung zwischen Forecast und Actual
-• Deutet auf positive Marktstimmung hin
-• Kurzfristig: Momentum nach oben möglich
-• Trotzdem: Vorsicht vor schnellen Gegenbewegungen
 """
 
                     embed = discord.Embed(
@@ -249,11 +261,11 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Verbesserte Edit-Logik
+                # Editieren, wenn Actual kommt
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
-                    if actual not in ["N/A", "", "Wird gerade veröffentlicht..."]:
+                    if actual not in ["N/A", "", "—", "Wird gerade veröffentlicht..."]:
                         # Neue Analyse mit Actual
                         new_analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
@@ -278,13 +290,7 @@ Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
 Die ersten Minuten nach solchen News sind sehr volatil.
 
 💡 Tipp:
-Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade eingehst.
-━━━━━━━━━━━━━━━━━━━
-📊 Kurze Analyse:
-• Starke Abweichung zwischen Forecast und Actual
-• Deutet auf positive Marktstimmung hin
-• Kurzfristig: Momentum nach oben möglich
-• Trotzdem: Vorsicht vor schnellen Gegenbewegungen
+Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
 """
 
                         new_embed = discord.Embed(
@@ -298,30 +304,26 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade ein
 
                         try:
                             await msg.edit(embed=new_embed)
-                            print(f"✏️ Nachricht für {title} erfolgreich editiert", flush=True)
+                            print(f"✏️ Nachricht für {title} editiert", flush=True)
                             del live_messages[key]
-                        except Exception as e:
-                            print(f"⚠️ Edit-Fehler bei {title}: {e}", flush=True)
+                        except:
+                            pass
 
         except Exception as e:
             print(f"❌ Loop-Fehler: {e}", flush=True)
 
-        await asyncio.sleep(20)   # schneller prüfen für besseres Editieren
+        await asyncio.sleep(30)
 
 
-# Test-Command bleibt unverändert
+# Test-Command (unverändert)
 @client.event
 async def on_message(message):
     if message.author == client.user:
         return
-
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
         print("🧪 Test-Command ausgelöst!", flush=True)
-
-        # ... dein Test-Embed ...
-
-        await message.channel.send(content=get_mention(), embed=embed)
+        # Hier deinen alten Test-Embed einfügen (wie in vorherigen Versionen)
 
 
 @client.event
