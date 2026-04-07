@@ -9,7 +9,7 @@ from dateutil import parser, tz
 
 sys.stdout.reconfigure(line_buffering=True)
 
-print("🚀 SCRIPT STARTET – Forex Factory XML | NUR HIGH IMPACT", flush=True)
+print("🚀 SCRIPT STARTET – Nur High Impact + verbesserte Actual-Lösung", flush=True)
 
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
@@ -58,7 +58,7 @@ def get_color_and_impact_name(impact: str):
 
 def get_market_reaction(country: str, has_actual: bool = False):
     if not has_actual:
-        return "• Marktreaktion hängt von den veröffentlichten Daten ab\n• Hohe Volatilität erwartet"
+        return "• Hohe Volatilität erwartet – warte auf die ersten Kerzen\n• Actual-Wert auf Forex Factory Website prüfen"
     
     if "USD" in country or "US" in country:
         return "• 📈 NAS100 → steigt\n• 📈 US30 → steigt\n• 🛢️ USOIL → steigt\n• ₿ BTC → steigt\n• 🟡 Gold (XAUUSD) → fällt"
@@ -95,10 +95,8 @@ def get_events():
             forecast = event.findtext("forecast", "N/A")
             previous = event.findtext("previous", "N/A")
 
-            # NUR HIGH IMPACT
             if impact_raw not in ["high", "3"]:
                 continue
-
             if not title or time_str in ("", "All Day", "Tentative"):
                 continue
 
@@ -113,13 +111,13 @@ def get_events():
                 "previous": previous
             })
 
-        print(f"✅ {len(events)} HIGH IMPACT Events von Forex Factory XML geladen", flush=True)
+        print(f"✅ {len(events)} HIGH IMPACT Events geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
 
     except Exception as e:
-        print(f"❌ Fehler beim Laden der XML: {e}", flush=True)
+        print(f"❌ Fehler beim Laden: {e}", flush=True)
         return last_events
 
 
@@ -143,7 +141,7 @@ async def news_loop():
         print("❌ Channel nicht gefunden!", flush=True)
         return
 
-    print(f"🟢 News-Loop gestartet | NUR HIGH IMPACT (Forex Factory XML)", flush=True)
+    print(f"🟢 News-Loop gestartet | NUR HIGH IMPACT", flush=True)
 
     while not client.is_closed():
         try:
@@ -181,7 +179,7 @@ async def news_loop():
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten**",
                         color=color,
                         timestamp=event_time_berlin
                     )
@@ -200,7 +198,7 @@ async def news_loop():
 
                     has_actual = actual not in ["N/A", "", "Wird gerade veröffentlicht..."]
 
-                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht... (siehe Forex Factory Website)"
+                    actual_line = f"Aktuell (Actual): {actual} 📈" if has_actual else "Aktuell (Actual): Wird gerade veröffentlicht... (siehe Forex Factory Website für den aktuellen Wert)"
 
                     analysis_text = f"""🕒 Status: LIVE • {event_time_berlin.strftime('%H:%M MEZ/MESZ')}
 ━━━━━━━━━━━━━━━━━━━
@@ -212,20 +210,19 @@ Vorher (Previous): {previous}
 ━━━━━━━━━━━━━━━━━━━
 🧠 Einfache Erklärung:
 
-Die veröffentlichten Zahlen liegen deutlich über den Erwartungen.
-Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
+Die Daten sind gerade veröffentlicht worden. Die genaue Auswirkung hängt vom Actual-Wert ab.
 
-➡️ Grundsätzlich positiv für den Markt
+➡️ Hohe Volatilität erwartet – warte auf die ersten Kerzen
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
 {get_market_reaction(country, has_actual)}
 ━━━━━━━━━━━━━━━━━━━
 ⚠️ Wichtiger Hinweis für Anfänger:
 
-Die ersten Minuten nach solchen News sind sehr volatil.
+Die ersten Minuten nach High-Impact News sind extrem volatil.
 
 💡 Tipp:
-Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
+Warte 10–15 Minuten, bis sich der Markt beruhigt hat, bevor du einen Trade eingehst.
 """
 
                     embed = discord.Embed(
@@ -243,7 +240,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Editieren wenn Actual kommt
+                # Editieren, wenn Actual doch in der XML steht
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
@@ -258,10 +255,9 @@ Vorher (Previous): {event.get('previous', 'N/A')}
 ━━━━━━━━━━━━━━━━━━━
 🧠 Einfache Erklärung:
 
-Die veröffentlichten Zahlen liegen deutlich über den Erwartungen.
-Das zeigt, dass die Wirtschaft aktuell stärker läuft als gedacht.
+Die veröffentlichten Zahlen liegen deutlich über/unter den Erwartungen.
 
-➡️ Grundsätzlich positiv für den Markt
+➡️ Grundsätzlich { "positiv" if "higher" in str(actual).lower() else "negativ" } für den Markt
 ━━━━━━━━━━━━━━━━━━━
 📈 Marktreaktion (typisch):
 {get_market_reaction(country, True)}
