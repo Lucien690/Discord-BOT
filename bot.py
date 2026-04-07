@@ -69,14 +69,15 @@ def get_market_reaction(country: str, has_actual: bool = False):
     else:
         return "• Marktreaktion je nach Daten möglich"
 
+
 def get_events():
     global last_events, last_fetch_time
 
     if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:  # alle 10 Minuten
         return last_events
 
-    # Korrigierter JBlanked Endpoint (heutige Events von Forex Factory Quelle)
-    url = 
+    # Korrigierter JBlanked Endpoint – heutige Events
+    url = "https://www.jblanked.com/news/api/forex-factory/calendar/today/"
 
     try:
         response = requests.get(url, timeout=15)
@@ -85,11 +86,11 @@ def get_events():
 
         events = []
         for ev in data:
-            try:"https://www.jblanked.com/news/api/forex-factory/calendar/today/"
+            try:
                 title = ev.get("Event", ev.get("Name", "N/A"))
                 country = ev.get("Currency", "N/A")
                 date_time_str = ev.get("Date", "") or ev.get("Time", "")
-                impact = ev.get("Impact", "low").lower()
+                impact = str(ev.get("Impact", "low")).lower()
                 actual = ev.get("Actual", "N/A")
                 forecast = ev.get("Forecast", "N/A")
                 previous = ev.get("Previous", "N/A")
@@ -117,7 +118,7 @@ def get_events():
             except:
                 continue
 
-        print(f"✅ {len(events)} Events von JBlanked (Forex Factory) geladen", flush=True)
+        print(f"✅ {len(events)} Events von JBlanked (Forex Factory Today) geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -125,7 +126,6 @@ def get_events():
     except Exception as e:
         print(f"❌ Fehler beim Laden von JBlanked API: {e}", flush=True)
         return last_events
-
 
 
 async def delete_old_messages(channel):
@@ -301,7 +301,7 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
         await asyncio.sleep(30)
 
 
-# Test-Command (unverändert – füge hier deinen alten Test-Embed ein)
+# Test-Command (unverändert)
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -309,7 +309,7 @@ async def on_message(message):
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
         print("🧪 Test-Command ausgelöst!", flush=True)
-        # Dein alter Test-Embed hier
+        # Hier kannst du deinen alten Test-Embed einfügen
 
 
 @client.event
