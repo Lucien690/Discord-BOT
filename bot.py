@@ -13,6 +13,10 @@ print("🚀 SCRIPT STARTET – JBlanked News API Version (kostenlos)", flush=Tru
 # ==================== KONFIGURATION ====================
 TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID", "0"))
+JBLANKED_API_KEY = os.getenv("JBLANKED_API_KEY")   # ← Hier wird dein Key geladen
+
+if not JBLANKED_API_KEY:
+    print("❌ WARNUNG: JBLANKED_API_KEY fehlt in den Environment Variables!", flush=True)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -73,14 +77,17 @@ def get_market_reaction(country: str, has_actual: bool = False):
 def get_events():
     global last_events, last_fetch_time
 
-    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:  # alle 10 Minuten
+    if last_fetch_time and (datetime.now(timezone.utc) - last_fetch_time).total_seconds() < 600:
         return last_events
 
-    # Korrigierter JBlanked Endpoint – heutige Events
     url = "https://www.jblanked.com/news/api/forex-factory/calendar/today/"
 
+    headers = {
+        "Authorization": f"Bearer {JBLANKED_API_KEY}"   # Key wird hier verwendet
+    }
+
     try:
-        response = requests.get(url, timeout=15)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
 
@@ -98,7 +105,6 @@ def get_events():
                 if not title or not date_time_str:
                     continue
 
-                # Zeit parsen
                 if " " in date_time_str:
                     date_str, time_str = date_time_str.split(" ", 1)
                 else:
@@ -118,7 +124,7 @@ def get_events():
             except:
                 continue
 
-        print(f"✅ {len(events)} Events von JBlanked (Forex Factory Today) geladen", flush=True)
+        print(f"✅ {len(events)} Events von JBlanked geladen", flush=True)
         last_events = events
         last_fetch_time = datetime.now(timezone.utc)
         return events
@@ -127,6 +133,9 @@ def get_events():
         print(f"❌ Fehler beim Laden von JBlanked API: {e}", flush=True)
         return last_events
 
+
+# ==================== Der Rest bleibt unverändert ====================
+# (delete_old_messages, news_loop, on_message, on_ready usw.)
 
 async def delete_old_messages(channel):
     now = datetime.now(timezone.utc)
@@ -181,12 +190,11 @@ async def news_loop():
                 mention = get_mention()
                 color, impact_name = get_color_and_impact_name(impact)
 
-                # 1-Stunden-Reminder
                 if 3000 < diff_seconds < 4200 and key not in pre_alerts_1h:
                     minutes = int(diff_seconds / 60)
                     embed = discord.Embed(
                         title=f"{impact_name} – {country} {title}",
-                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten** (um {event_time_berlin.strftime('%H:%M')} MEZ/MESZ)",
+                        description=f"🕒 **Erinnerung:** Event in ca. **{minutes} Minuten**",
                         color=color,
                         timestamp=event_time_berlin
                     )
@@ -195,7 +203,6 @@ async def news_loop():
                     pre_alerts_1h.add(key)
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
 
-                # LIVE-Post – zur genauen Zeit
                 if -60 < diff_seconds < 600 and key not in sent_events:
                     print(f"🚀 LIVE Event gesendet: {title}", flush=True)
 
@@ -248,7 +255,6 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
                     message_ids_to_delete[msg.id] = event_time_berlin + timedelta(hours=24)
                     live_messages[key] = msg
 
-                # Editieren, wenn Actual kommt
                 if key in live_messages:
                     msg = live_messages[key]
                     actual = event.get("actual", "N/A")
@@ -301,7 +307,6 @@ Warte 10–15 Minuten, bis sich der Markt beruhigt hat.
         await asyncio.sleep(30)
 
 
-# Test-Command (unverändert)
 @client.event
 async def on_message(message):
     if message.author == client.user:
@@ -309,7 +314,6 @@ async def on_message(message):
     content_lower = message.content.lower()
     if client.user.mentioned_in(message) and ("test" in content_lower or "fake" in content_lower):
         print("🧪 Test-Command ausgelöst!", flush=True)
-        # Hier kannst du deinen alten Test-Embed einfügen
 
 
 @client.event
